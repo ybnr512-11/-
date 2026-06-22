@@ -86,20 +86,12 @@ export default function RecommendationPanel({ content }: RecommendationPanelProp
                   )}
                   <div className="recommend-links">
                     <a
-                      href={item.naverSearchUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="recommend-link"
-                    >
-                      네이버 검색
-                    </a>
-                    <a
-                      href={item.naverMapUrl}
+                      href={item.googleMapUrl || item.naverMapUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="recommend-link recommend-link-map"
                     >
-                      {data.source === "naver" ? "네이버 페이지" : "네이버 지도"}
+                      Google 지도
                     </a>
                   </div>
                 </div>
@@ -108,8 +100,8 @@ export default function RecommendationPanel({ content }: RecommendationPanelProp
           </ul>
           <p className="recommend-disclaimer">
             {data.source === "naver"
-              ? "네이버 지역 검색 API 결과입니다. 영업시간·메뉴는 방문 전 네이버에서 다시 확인해주세요."
-              : "Google 검색 기반 AI 추천입니다. 방문 전 네이버 지도에서 최신 정보를 확인해주세요."}
+              ? "네이버 지역 검색 API 결과입니다. 위치는 Google 지도 링크로 확인해주세요."
+              : "Google 검색 기반 AI 추천입니다. 방문 전 Google 지도에서 최신 정보를 확인해주세요."}
           </p>
         </div>
       )}

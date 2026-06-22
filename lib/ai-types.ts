@@ -8,6 +8,7 @@ export interface RecommendItem {
   naverPlaceUrl?: string;
   naverSearchUrl?: string;
   naverMapUrl?: string;
+  googleMapUrl?: string;
 }
 
 export interface RecommendResult {

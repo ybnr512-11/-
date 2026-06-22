@@ -19,7 +19,7 @@ export default function Chatbot({ nickname }: ChatbotProps) {
     {
       role: "assistant",
       content:
-        "안녕하세요! 판교 AI 도우미예요 🏙️\n맛집·카페 질문은 **네이버 지역 검색(리뷰순)** 결과만 추천하며, 각 업체 🗺️ 버튼으로 정확한 네이버 지도 위치를 열 수 있어요.",
+        "안녕하세요! 판교 AI 도우미예요 🏙️\n맛집·카페 질문은 **Google 검색** 결과를 바탕으로 추천하며, 각 업체 🗺️ 버튼으로 **Google 지도** 위치를 열 수 있어요.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -75,7 +75,7 @@ export default function Chatbot({ nickname }: ChatbotProps) {
     <div className="chatbot">
       <div className="chatbot-header">
         <span className="chatbot-badge">검색 기반 AI</span>
-        <p>맛집·카페는 네이버 검색 결과 + 좌표 기반 지도 링크</p>
+        <p>맛집·카페는 Google 검색 + Google 지도 링크</p>
       </div>
 
       {messages.length === 1 && (
@@ -112,7 +112,7 @@ export default function Chatbot({ nickname }: ChatbotProps) {
                         <strong>{p.name}</strong>
                         <span>{p.address}</span>
                       </span>
-                      <span className="place-link-go">🗺️ 지도</span>
+                      <span className="place-link-go">🗺️ Google</span>
                     </a>
                   ))}
                 </div>
