@@ -5,11 +5,43 @@ export interface NaverPlace {
   telephone: string;
   link: string;
   address: string;
+  mapx: string;
+  mapy: string;
   naverSearchQuery: string;
 }
 
 function stripHtml(text: string) {
   return text.replace(/<[^>]*>/g, "").trim();
+}
+
+function isNaverMapLink(url: string) {
+  return /map\.naver\.com|naver\.me|m\.place\.naver\.com|pcmap\.place\.naver\.com/i.test(url);
+}
+
+/** API link가 홈페이지인 경우가 많아 좌표·이름 기반 네이버 지도 URL 생성 */
+export function buildNaverPlaceLink(place: {
+  name: string;
+  address: string;
+  link?: string;
+  mapx?: string;
+  mapy?: string;
+}): string {
+  const rawLink = place.link?.trim() ?? "";
+  if (rawLink && isNaverMapLink(rawLink)) {
+    return rawLink.replace(/^http:/i, "https:");
+  }
+
+  if (place.mapx && place.mapy) {
+    const lng = Number(place.mapx) / 1e7;
+    const lat = Number(place.mapy) / 1e7;
+    if (Number.isFinite(lng) && Number.isFinite(lat) && lng > 0 && lat > 0) {
+      const label = encodeURIComponent(`${place.name} ${place.address}`.trim());
+      return `https://map.naver.com/v5/search/${label}?c=${lng},${lat},17,0,0,0,dh`;
+    }
+  }
+
+  const query = encodeURIComponent(`${place.name} ${place.address}`.trim());
+  return `https://map.naver.com/v5/search/${query}`;
 }
 
 export function isNaverSearchConfigured() {
@@ -51,6 +83,8 @@ export async function searchNaverPlaces(
       link: string;
       address: string;
       roadAddress: string;
+      mapx: string;
+      mapy: string;
     }>;
   };
 
@@ -58,14 +92,17 @@ export async function searchNaverPlaces(
 
   return data.items.map((item) => {
     const name = stripHtml(item.title);
+    const address = item.roadAddress || item.address;
     return {
       name,
       category: item.category.replace(/^.*?>/, "").trim(),
       description: stripHtml(item.description),
       telephone: item.telephone || "",
       link: item.link,
-      address: item.roadAddress || item.address,
-      naverSearchQuery: name,
+      address,
+      mapx: item.mapx,
+      mapy: item.mapy,
+      naverSearchQuery: `${name} ${address}`.trim(),
     };
   });
 }
@@ -103,16 +140,32 @@ export function isPlaceRelatedQuery(text: string) {
   return PLACE_HINTS.some((hint) => text.includes(hint));
 }
 
+export function buildPlaceQuery(userQuery: string) {
+  return userQuery.includes("판교") ? userQuery : `판교 ${userQuery}`;
+}
+
 export async function getNaverContextBlock(userQuery: string): Promise<string | null> {
   if (!isPlaceRelatedQuery(userQuery)) return null;
-  const query = userQuery.includes("판교") ? userQuery : `판교 ${userQuery}`;
-  const places = await searchNaverPlaces(query, 5);
+  const places = await searchNaverPlaces(buildPlaceQuery(userQuery), 5);
   if (!places?.length) return null;
 
   return places
-    .map(
-      (p, i) =>
-        `${i + 1}. ${p.name} | ${p.category} | ${p.address}${p.description ? ` | ${p.description}` : ""}${p.telephone ? ` | ${p.telephone}` : ""} | ${p.link}`
-    )
+    .map((p, i) => {
+      const mapLink = buildNaverPlaceLink(p);
+      return `${i + 1}. ${p.name} | ${p.category} | ${p.address}${p.description ? ` | ${p.description}` : ""} | 지도: ${mapLink}`;
+    })
     .join("\n");
+}
+
+export function naverPlacesToLinks(places: NaverPlace[]) {
+  return places.map((p) => {
+    const url = buildNaverPlaceLink(p);
+    return {
+      name: p.name,
+      address: p.address,
+      category: p.category,
+      mapUrl: url,
+      placeUrl: url,
+    };
+  });
 }

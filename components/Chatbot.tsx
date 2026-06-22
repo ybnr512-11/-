@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChatMessage, PlaceLink } from "@/lib/ai-types";
 
 interface ChatbotProps {
@@ -14,42 +14,12 @@ const STARTERS = [
   "판교 회식하기 좋은 곳",
 ];
 
-function renderMarkdownLinks(text: string) {
-  const parts = text.split(/(\[[^\]]+\]\([^)]+\))/g);
-  return parts.map((part, i) => {
-    const match = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
-    if (match) {
-      return (
-        <a
-          key={i}
-          href={match[2]}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="chatbot-link"
-        >
-          {match[1]}
-        </a>
-      );
-    }
-    return (
-      <Fragment key={i}>
-        {part.split("\n").map((line, j, arr) => (
-          <Fragment key={j}>
-            {line}
-            {j < arr.length - 1 && <br />}
-          </Fragment>
-        ))}
-      </Fragment>
-    );
-  });
-}
-
 export default function Chatbot({ nickname }: ChatbotProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
       content:
-        "안녕하세요! 판교 AI 도우미예요 🏙️\n맛집·카페 질문은 **네이버 지역 검색**과 **Google 검색** 결과를 바탕으로 팩트 기반으로 답변해드립니다.\n추천 장소는 네이버 지도 링크로 바로 연결해드려요.",
+        "안녕하세요! 판교 AI 도우미예요 🏙️\n맛집·카페 질문은 **네이버 지역 검색(리뷰순)** 결과만 추천하며, 각 업체 🗺️ 버튼으로 정확한 네이버 지도 위치를 열 수 있어요.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -105,7 +75,7 @@ export default function Chatbot({ nickname }: ChatbotProps) {
     <div className="chatbot">
       <div className="chatbot-header">
         <span className="chatbot-badge">검색 기반 AI</span>
-        <p>네이버 지역 검색 + Google 검색 · 장소 추천 시 네이버 지도 링크 제공</p>
+        <p>맛집·카페는 네이버 검색 결과 + 좌표 기반 지도 링크</p>
       </div>
 
       {messages.length === 1 && (
@@ -126,18 +96,23 @@ export default function Chatbot({ nickname }: ChatbotProps) {
           >
             {msg.role === "assistant" && <span className="chatbot-avatar">🤖</span>}
             <div className="chatbot-text">
-              {renderMarkdownLinks(msg.content)}
+              {msg.content}
               {msg.placeLinks && msg.placeLinks.length > 0 && (
                 <div className="chatbot-place-links">
-                  {msg.placeLinks.map((p: PlaceLink) => (
+                  {msg.placeLinks.map((p: PlaceLink, idx) => (
                     <a
                       key={`${p.name}-${p.address}`}
-                      href={p.placeUrl || p.mapUrl}
+                      href={p.placeUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="place-link-btn"
+                      className="place-link-card"
                     >
-                      🗺️ {p.name}
+                      <span className="place-link-num">{idx + 1}</span>
+                      <span className="place-link-info">
+                        <strong>{p.name}</strong>
+                        <span>{p.address}</span>
+                      </span>
+                      <span className="place-link-go">🗺️ 지도</span>
                     </a>
                   ))}
                 </div>

@@ -3,8 +3,11 @@ import type { ChatMessage, PlaceLink, RecommendResult } from "@/lib/ai-types";
 import { buildNaverPlaceSearchUrl, buildNaverSearchUrl } from "@/lib/keywords";
 import {
   buildNaverQuery,
+  buildNaverPlaceLink,
+  buildPlaceQuery,
   getNaverContextBlock,
   isPlaceRelatedQuery,
+  naverPlacesToLinks,
   searchNaverPlaces,
 } from "@/lib/naver-search";
 
@@ -99,9 +102,68 @@ function buildRecommendFromNaver(
       highlights: p.category,
       rankHint: "네이버 지역 검색 · 리뷰순",
       naverSearchQuery: p.naverSearchQuery,
-      naverPlaceUrl: p.link,
+      naverPlaceUrl: buildNaverPlaceLink(p),
     })),
   };
+}
+
+async function getPlaceReasonsFromGemini(
+  userQuery: string,
+  places: NonNullable<Awaited<ReturnType<typeof searchNaverPlaces>>>
+): Promise<Record<string, string>> {
+  const list = places
+    .map((p, i) => `${i + 1}. ${p.name} (${p.category}) · ${p.address}`)
+    .join("\n");
+
+  const prompt = `사용자 질문: "${userQuery}"
+
+아래 네이버 검색 결과 각 업체에 대해 1줄 추천 이유만 작성하세요.
+업체명은 반드시 아래 목록과 동일하게 유지하세요.
+
+${list}
+
+JSON만 출력:
+{"reasons":[{"name":"업체명","reason":"한 줄 설명"}]}`;
+
+  return withModelFallback(async (modelName) => {
+    const genAI = getClient();
+    const model = genAI.getGenerativeModel({
+      model: modelName,
+      systemInstruction: ASSISTANT_PERSONA,
+    });
+    const result = await model.generateContent(prompt);
+    const text = extractText(result.response);
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const parsed = JSON.parse(jsonMatch?.[0] ?? text) as {
+      reasons?: Array<{ name?: string; reason?: string }>;
+    };
+    const map: Record<string, string> = {};
+    (parsed.reasons ?? []).forEach((row, i) => {
+      const place = places[i];
+      if (place && row.reason) {
+        map[place.name] = row.reason;
+      } else if (row.name && row.reason) {
+        map[row.name] = row.reason;
+      }
+    });
+    return map;
+  });
+}
+
+function buildNaverPlaceReply(
+  places: NonNullable<Awaited<ReturnType<typeof searchNaverPlaces>>>,
+  reasons: Record<string, string>
+) {
+  let reply = `네이버 지역 검색(리뷰순) 기준 ${places.length}곳을 추천드립니다.\n\n`;
+  places.forEach((p, i) => {
+    const reason =
+      reasons[p.name] || p.description || `${p.category} · 판교 인근 업체`;
+    reply += `${i + 1}. ${p.name}\n`;
+    reply += `   📍 ${p.address}\n`;
+    reply += `   ${reason}\n\n`;
+  });
+  reply += `아래 🗺️ 버튼을 누르면 해당 업체 위치가 네이버 지도에 표시됩니다.`;
+  return reply;
 }
 
 export async function chatWithGemini(
@@ -112,55 +174,54 @@ export async function chatWithGemini(
   const last = apiMessages[apiMessages.length - 1];
   if (!last || last.role !== "user") throw new Error("INVALID_USER_MESSAGE");
 
-  const sources: string[] = [];
-  const placeLinks: PlaceLink[] = [];
-
-  const naverBlock = await getNaverContextBlock(last.content);
-  if (naverBlock) sources.push("네이버 지역 검색");
-
   if (isPlaceRelatedQuery(last.content)) {
-    const query = last.content.includes("판교") ? last.content : `판교 ${last.content}`;
-    const places = await searchNaverPlaces(query, 5);
-    if (places?.length) {
-      for (const p of places) {
-        placeLinks.push({
-          name: p.name,
-          address: p.address,
-          mapUrl: buildNaverPlaceSearchUrl(p.naverSearchQuery),
-          placeUrl: p.link,
-        });
+    const places = await searchNaverPlaces(buildPlaceQuery(last.content), 5);
+    if (places === null) {
+      return {
+        reply:
+          "맛집·카페 추천은 네이버 지역 검색 API 연동이 필요합니다.\n관리자가 NAVER_CLIENT_ID / NAVER_CLIENT_SECRET을 설정하면 정확한 업체·지도 링크를 제공할 수 있어요.",
+        sources: [],
+        placeLinks: [],
+      };
+    }
+    if (places.length > 0) {
+      const placeLinks = naverPlacesToLinks(places);
+      let reasons: Record<string, string> = {};
+      try {
+        reasons = await getPlaceReasonsFromGemini(last.content, places);
+      } catch (err) {
+        console.error("Place reasons generation failed:", err);
       }
+      const reply = buildNaverPlaceReply(places, reasons);
+      return { reply, sources: ["네이버 지역 검색"], placeLinks };
     }
   }
+
+  const sources: string[] = [];
+  const naverBlock = await getNaverContextBlock(last.content);
+  if (naverBlock) sources.push("네이버 지역 검색");
 
   const prefix = nickname ? `[${nickname}] ` : "";
   let userText = `${prefix}${last.content}`;
   if (naverBlock) {
-    userText += `\n\n[네이버 지역 검색 결과 - 아래 업체만 추천 가능]\n${naverBlock}`;
+    userText += `\n\n[네이버 지역 검색 결과]\n${naverBlock}`;
   }
 
-  userText += `\n\n(지시: Google 검색과 위 데이터를 활용해 팩트 기반으로 답변. 추천하는 각 장소는 반드시 [업체명](네이버링크) 마크다운 형식으로 네이버 지도/플레이스 링크를 포함. 말미에 "📍 출처: ..." 로 표시)`;
+  userText += `\n\n(지시: 검색 결과에 있는 정보만 사용. 장소 URL·링크는 작성하지 마세요. 말미에 "📍 출처: ..." 로 표시)`;
 
   const contents = buildGeminiContents(apiMessages.slice(0, -1));
   contents.push({ role: "user", parts: [{ text: userText }] });
 
-  let reply = await withModelFallback((modelName) =>
+  const reply = await withModelFallback((modelName) =>
     generateWithGoogleSearch(
       modelName,
-      `${ASSISTANT_PERSONA}\nGoogle 검색 도구로 최신 정보를 확인한 뒤 답변하세요. 장소 추천 시 각 업체명을 [이름](링크) 형식의 클릭 가능한 마크다운 링크로 작성하세요.`,
+      `${ASSISTANT_PERSONA}\nGoogle 검색 도구로 최신 정보를 확인한 뒤 답변하세요. 링크 URL은 포함하지 마세요.`,
       contents
     )
   );
 
-  if (placeLinks.length > 0 && !reply.includes("map.naver") && !reply.includes("place.naver")) {
-    reply += "\n\n🗺️ **네이버 지도 바로가기**\n";
-    reply += placeLinks
-      .map((p) => `- [${p.name}](${p.placeUrl || p.mapUrl}) · ${p.address}`)
-      .join("\n");
-  }
-
   sources.push("Google 검색");
-  return { reply, sources: Array.from(new Set(sources)), placeLinks };
+  return { reply, sources: Array.from(new Set(sources)), placeLinks: [] };
 }
 
 export async function getRecommendations(
@@ -228,7 +289,9 @@ export function enrichRecommendLinks(result: RecommendResult) {
     items: result.items.map((item) => ({
       ...item,
       naverSearchUrl: buildNaverSearchUrl(item.naverSearchQuery),
-      naverMapUrl: item.naverPlaceUrl || buildNaverPlaceSearchUrl(item.naverSearchQuery),
+      naverMapUrl:
+        item.naverPlaceUrl ||
+        buildNaverPlaceSearchUrl(item.naverSearchQuery),
     })),
   };
 }

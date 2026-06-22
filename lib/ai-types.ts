@@ -21,6 +21,7 @@ export interface RecommendResult {
 export interface PlaceLink {
   name: string;
   address: string;
+  category?: string;
   mapUrl: string;
   placeUrl: string;
 }
