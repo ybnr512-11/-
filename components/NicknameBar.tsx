@@ -30,10 +30,11 @@ export default function NicknameBar({ onNicknameChange }: NicknameBarProps) {
 
   return (
     <div className="nickname-bar">
-      <span className="nickname-label">내 닉네임</span>
+      <span className="nickname-label">닉네임</span>
       {editing ? (
         <div className="nickname-edit">
           <input
+            className="nickname-input"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             maxLength={20}
@@ -41,15 +42,24 @@ export default function NicknameBar({ onNicknameChange }: NicknameBarProps) {
             autoFocus
             onKeyDown={(e) => e.key === "Enter" && save()}
           />
-          <button onClick={save}>저장</button>
-          <button className="btn-ghost" onClick={() => setEditing(false)}>
+          <button type="button" className="btn-header" onClick={save}>
+            저장
+          </button>
+          <button type="button" className="btn-header-ghost" onClick={() => setEditing(false)}>
             취소
           </button>
         </div>
       ) : (
         <div className="nickname-display">
           <strong>{nickname}</strong>
-          <button className="btn-ghost btn-sm" onClick={() => { setInput(nickname); setEditing(true); }}>
+          <button
+            type="button"
+            className="btn-header-ghost"
+            onClick={() => {
+              setInput(nickname);
+              setEditing(true);
+            }}
+          >
             변경
           </button>
         </div>

@@ -9,6 +9,12 @@ import Chatbot from "@/components/Chatbot";
 
 type Tab = "timeline" | "chat" | "ai";
 
+const TABS: { id: Tab; icon: string; label: string }[] = [
+  { id: "timeline", icon: "📰", label: "타임라인" },
+  { id: "chat", icon: "💬", label: "실시간 대화" },
+  { id: "ai", icon: "🤖", label: "AI 도우미" },
+];
+
 export default function Home() {
   const [tab, setTab] = useState<Tab>("timeline");
   const [nickname, setNickname] = useState("");
@@ -29,7 +35,7 @@ export default function Home() {
   return (
     <div className="app">
       <header className="header">
-        <div className="header-inner">
+        <div className="header-top">
           <div className="logo">
             <span className="logo-icon">📬</span>
             <div>
@@ -37,29 +43,22 @@ export default function Home() {
               <p>판교 사람들의 자유로운 소식 공유 공간</p>
             </div>
           </div>
-          <NicknameBar onNicknameChange={handleNicknameChange} />
         </div>
+        <NicknameBar onNicknameChange={handleNicknameChange} />
       </header>
 
-      <nav className="tabs">
-        <button
-          className={tab === "timeline" ? "active" : ""}
-          onClick={() => setTab("timeline")}
-        >
-          📰 소식 타임라인
-        </button>
-        <button
-          className={tab === "chat" ? "active" : ""}
-          onClick={() => setTab("chat")}
-        >
-          💬 실시간 대화
-        </button>
-        <button
-          className={tab === "ai" ? "active" : ""}
-          onClick={() => setTab("ai")}
-        >
-          🤖 AI 도우미
-        </button>
+      <nav className="tabs" aria-label="메인 메뉴">
+        {TABS.map(({ id, icon, label }) => (
+          <button
+            key={id}
+            type="button"
+            className={tab === id ? "active" : ""}
+            onClick={() => setTab(id)}
+          >
+            <span className="tab-icon">{icon}</span>
+            <span className="tab-label">{label}</span>
+          </button>
+        ))}
       </nav>
 
       <main className="main">
@@ -69,7 +68,7 @@ export default function Home() {
       </main>
 
       <footer className="footer">
-        <p>로그인 없이 자유롭게 이용하세요 · 닉네임은 브라우저에 저장됩니다</p>
+        <p>로그인 없이 자유롭게 · 닉네임은 브라우저에 저장됩니다</p>
       </footer>
     </div>
   );

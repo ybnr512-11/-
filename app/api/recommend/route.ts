@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { detectCategory } from "@/lib/keywords";
 import { enrichRecommendLinks, getRecommendations } from "@/lib/gemini";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();

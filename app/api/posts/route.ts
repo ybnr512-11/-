@@ -4,6 +4,9 @@ import fs from "fs";
 import path from "path";
 import { createPost, getPosts, uploadsDir } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 export async function GET() {
   const posts = getPosts();
   return NextResponse.json(posts);

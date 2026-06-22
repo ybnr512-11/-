@@ -4,6 +4,9 @@ import { createComment, getComments } from "@/lib/db";
 import { isValidMapUrl } from "@/lib/map";
 import { saveUploadedImage } from "@/lib/upload";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: { id: string } }
