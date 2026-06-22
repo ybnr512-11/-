@@ -5,8 +5,9 @@ import { io, Socket } from "socket.io-client";
 import NicknameBar from "@/components/NicknameBar";
 import Timeline from "@/components/Timeline";
 import ChatRoom from "@/components/ChatRoom";
+import Chatbot from "@/components/Chatbot";
 
-type Tab = "timeline" | "chat";
+type Tab = "timeline" | "chat" | "ai";
 
 export default function Home() {
   const [tab, setTab] = useState<Tab>("timeline");
@@ -53,14 +54,18 @@ export default function Home() {
         >
           💬 실시간 대화
         </button>
+        <button
+          className={tab === "ai" ? "active" : ""}
+          onClick={() => setTab("ai")}
+        >
+          🤖 AI 도우미
+        </button>
       </nav>
 
       <main className="main">
-        {tab === "timeline" ? (
-          <Timeline nickname={nickname} socket={socket} />
-        ) : (
-          <ChatRoom nickname={nickname} socket={socket} />
-        )}
+        {tab === "timeline" && <Timeline nickname={nickname} socket={socket} />}
+        {tab === "chat" && <ChatRoom nickname={nickname} socket={socket} />}
+        {tab === "ai" && <Chatbot nickname={nickname} />}
       </main>
 
       <footer className="footer">

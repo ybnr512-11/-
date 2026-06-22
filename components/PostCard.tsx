@@ -5,6 +5,7 @@ import { formatTime } from "@/lib/utils";
 import { buildLocationUrl, isValidMapUrl } from "@/lib/map";
 import { Socket } from "socket.io-client";
 import MapPreview from "./MapPreview";
+import RecommendationPanel from "./RecommendationPanel";
 
 interface Post {
   id: string;
@@ -157,6 +158,7 @@ export default function PostCard({ post, nickname, socket }: PostCardProps) {
           <img src={post.image_url} alt="게시글 이미지" loading="lazy" />
         </div>
       )}
+      <RecommendationPanel content={post.content} />
       <footer className="post-footer">
         <button className="btn-ghost" onClick={toggleComments}>
           💬 댓글 {post.comment_count ?? 0}개
