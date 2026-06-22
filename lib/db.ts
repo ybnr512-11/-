@@ -35,6 +35,9 @@ function migrateCommentsTable(database: Database.Database) {
   if (!names.has("map_url")) {
     database.exec("ALTER TABLE comments ADD COLUMN map_url TEXT");
   }
+  if (!names.has("parent_id")) {
+    database.exec("ALTER TABLE comments ADD COLUMN parent_id TEXT");
+  }
 }
 
 function initSchema(database: Database.Database) {
@@ -50,12 +53,14 @@ function initSchema(database: Database.Database) {
     CREATE TABLE IF NOT EXISTS comments (
       id TEXT PRIMARY KEY,
       post_id TEXT NOT NULL,
+      parent_id TEXT,
       nickname TEXT NOT NULL,
       content TEXT NOT NULL,
       image_url TEXT,
       map_url TEXT,
       created_at INTEGER NOT NULL,
-      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+      FOREIGN KEY (parent_id) REFERENCES comments(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS chat_messages (
@@ -94,6 +99,7 @@ export interface Post {
 export interface Comment {
   id: string;
   post_id: string;
+  parent_id: string | null;
   nickname: string;
   content: string;
   image_url: string | null;
@@ -192,18 +198,20 @@ export function createComment(
   nickname: string,
   content: string,
   imageUrl: string | null = null,
-  mapUrl: string | null = null
+  mapUrl: string | null = null,
+  parentId: string | null = null
 ): Comment {
   const database = getDb();
   const createdAt = Date.now();
   database
     .prepare(
-      "INSERT INTO comments (id, post_id, nickname, content, image_url, map_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO comments (id, post_id, parent_id, nickname, content, image_url, map_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     )
-    .run(id, postId, nickname, content, imageUrl, mapUrl, createdAt);
+    .run(id, postId, parentId, nickname, content, imageUrl, mapUrl, createdAt);
   return {
     id,
     post_id: postId,
+    parent_id: parentId,
     nickname,
     content,
     image_url: imageUrl,
@@ -223,10 +231,25 @@ export function updateComment(id: string, content: string): Comment | undefined 
   return getComment(id);
 }
 
-export function deleteComment(id: string): boolean {
+function collectChildCommentIds(database: Database.Database, id: string): string[] {
+  const children = database
+    .prepare("SELECT id FROM comments WHERE parent_id = ?")
+    .all(id) as { id: string }[];
+  let ids: string[] = [];
+  for (const child of children) {
+    ids.push(child.id);
+    ids = ids.concat(collectChildCommentIds(database, child.id));
+  }
+  return ids;
+}
+
+export function deleteComment(id: string): number {
   const database = getDb();
-  const result = database.prepare("DELETE FROM comments WHERE id = ?").run(id);
-  return result.changes > 0;
+  const descendantIds = collectChildCommentIds(database, id);
+  const allIds = [id, ...descendantIds];
+  const placeholders = allIds.map(() => "?").join(",");
+  database.prepare(`DELETE FROM comments WHERE id IN (${placeholders})`).run(...allIds);
+  return allIds.length;
 }
 
 export function getChatMessages(limit = 100): ChatMessage[] {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
-import { createComment, getComments } from "@/lib/db";
+import { createComment, getComment, getComments } from "@/lib/db";
 import { isValidMapUrl } from "@/lib/map";
 import { saveUploadedImage } from "@/lib/upload";
 
@@ -25,6 +25,7 @@ export async function POST(
     const content = (formData.get("content") as string)?.trim() || "";
     const image = formData.get("image") as File | null;
     const mapUrl = (formData.get("map_url") as string)?.trim() || null;
+    const parentId = (formData.get("parent_id") as string)?.trim() || null;
 
     if (!nickname || nickname.length > 20) {
       return NextResponse.json({ error: "닉네임을 확인해주세요" }, { status: 400 });
@@ -45,6 +46,13 @@ export async function POST(
       );
     }
 
+    if (parentId) {
+      const parent = getComment(parentId);
+      if (!parent || parent.post_id !== params.id) {
+        return NextResponse.json({ error: "답글 대상 댓글을 찾을 수 없습니다" }, { status: 400 });
+      }
+    }
+
     let imageUrl: string | null = null;
     if (image && image.size > 0) {
       try {
@@ -63,7 +71,8 @@ export async function POST(
       nickname,
       content,
       imageUrl,
-      mapUrl
+      mapUrl,
+      parentId
     );
     return NextResponse.json(comment, { status: 201 });
   } catch {

@@ -53,8 +53,8 @@ export async function DELETE(
       return NextResponse.json({ error: "본인 댓글만 삭제할 수 있습니다" }, { status: 403 });
     }
 
-    deleteComment(params.commentId);
-    return NextResponse.json({ ok: true });
+    const deleted = deleteComment(params.commentId);
+    return NextResponse.json({ ok: true, deleted });
   } catch {
     return NextResponse.json({ error: "댓글 삭제에 실패했습니다" }, { status: 500 });
   }
