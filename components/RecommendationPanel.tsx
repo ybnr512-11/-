@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { detectCategory } from "@/lib/keywords";
 import type { EnrichedRecommendResult } from "@/lib/gemini";
+import { getSourceLabel } from "@/lib/gemini";
 
 interface RecommendationPanelProps {
   content: string;
@@ -65,6 +66,9 @@ export default function RecommendationPanel({ content }: RecommendationPanelProp
 
       {open && data && (
         <div className="recommend-body">
+          <span className="recommend-source-badge">
+            📍 {getSourceLabel(data.source)} 기반
+          </span>
           <p className="recommend-summary">{data.summary}</p>
           <ul className="recommend-list">
             {data.items.map((item, i) => (
@@ -95,7 +99,7 @@ export default function RecommendationPanel({ content }: RecommendationPanelProp
                       rel="noopener noreferrer"
                       className="recommend-link recommend-link-map"
                     >
-                      네이버 지도
+                      {data.source === "naver" ? "네이버 페이지" : "네이버 지도"}
                     </a>
                   </div>
                 </div>
@@ -103,7 +107,9 @@ export default function RecommendationPanel({ content }: RecommendationPanelProp
             ))}
           </ul>
           <p className="recommend-disclaimer">
-            AI가 생성한 추천입니다. 방문 전 네이버에서 최신 리뷰·영업시간을 확인해주세요.
+            {data.source === "naver"
+              ? "네이버 지역 검색 API 결과입니다. 영업시간·메뉴는 방문 전 네이버에서 다시 확인해주세요."
+              : "Google 검색 기반 AI 추천입니다. 방문 전 네이버 지도에서 최신 정보를 확인해주세요."}
           </p>
         </div>
       )}

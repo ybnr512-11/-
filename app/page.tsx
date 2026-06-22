@@ -6,6 +6,7 @@ import NicknameBar from "@/components/NicknameBar";
 import Timeline from "@/components/Timeline";
 import ChatRoom from "@/components/ChatRoom";
 import Chatbot from "@/components/Chatbot";
+import ShareLink from "@/components/ShareLink";
 
 type Tab = "timeline" | "chat" | "ai";
 
@@ -69,12 +70,7 @@ export default function Home() {
 
       <footer className="footer">
         <p>로그인 없이 자유롭게 · 닉네임은 브라우저에 저장됩니다</p>
-        <p className="footer-link">
-          공유 링크:{" "}
-          <a href="https://ybnr512-11.vercel.app" target="_blank" rel="noopener noreferrer">
-            ybnr512-11.vercel.app
-          </a>
-        </p>
+        <ShareLink />
       </footer>
     </div>
   );

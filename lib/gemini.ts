@@ -1,46 +1,48 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { ChatMessage, RecommendResult } from "@/lib/ai-types";
 import { buildNaverPlaceSearchUrl, buildNaverSearchUrl } from "@/lib/keywords";
+import {
+  buildNaverQuery,
+  getNaverContextBlock,
+  searchNaverPlaces,
+} from "@/lib/naver-search";
 
-const MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+const MODELS = ["gemini-2.5-flash", "gemini-2.0-flash"];
+
+const FACT_RULES = `반드시 검색 결과·제공된 데이터에 있는 정보만 사용하세요.
+검색 결과에 없는 업체 이름, 주소, 메뉴, 평점을 지어내지 마세요.
+확실하지 않으면 "검색 결과에서 확인되지 않습니다"라고 답하세요.`;
 
 const ASSISTANT_PERSONA = `당신은 '판교 대신 전해드립니다' 커뮤니티 AI 도우미입니다.
-판교·분당·판교역·백현동·판교테크노밸리 지역의 맛집, 카페, 교통, 주차, 부동산, 생활 정보를 친절하게 안내합니다.
-맛집·카페 추천 시 네이버·구글 검색에서 평점·리뷰가 좋고 인기 있는 곳 위주로 추천하세요.
-항상 한국어로 답하고, 실제 방문 전 네이버 지도에서 최신 영업시간·리뷰를 확인하라고 안내하세요.
-모르는 정보는 지어내지 말고 솔직히 말하세요.`;
+판교·분당·판교역·백현동·판교테크노밸리 지역 정보를 안내합니다.
+${FACT_RULES}
+항상 한국어로 답하고, 방문 전 네이버 지도에서 최신 영업시간·리뷰 확인을 안내하세요.`;
+
+const GOOGLE_SEARCH_TOOLS = [{ googleSearch: {} }] as never;
 
 function getClient() {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY_MISSING");
-  }
+  if (!apiKey) throw new Error("GEMINI_API_KEY_MISSING");
   return new GoogleGenerativeAI(apiKey);
 }
 
 function toApiMessages(messages: ChatMessage[]): ChatMessage[] {
-  const filtered = messages.filter(
+  return messages.filter(
     (m, i) => !(i === 0 && m.role === "assistant" && messages.length > 1)
   );
-  if (filtered.length === 0 || filtered[0]?.role === "assistant") {
-    return filtered.filter((m) => m.role === "user" || m.role === "assistant");
-  }
-  return filtered;
 }
 
-function buildHistory(messages: ChatMessage[]) {
+function buildGeminiContents(messages: ChatMessage[]) {
   const apiMessages = toApiMessages(messages);
-  const prior = apiMessages.slice(0, -1);
-  let history = prior.map((m) => ({
+  let contents = apiMessages.map((m) => ({
     role: m.role === "assistant" ? ("model" as const) : ("user" as const),
     parts: [{ text: m.content }],
   }));
 
-  while (history.length > 0 && history[0].role === "model") {
-    history = history.slice(1);
+  while (contents.length > 0 && contents[0].role === "model") {
+    contents = contents.slice(1);
   }
-
-  return { history, last: apiMessages[apiMessages.length - 1] };
+  return contents;
 }
 
 function extractText(response: { text: () => string }) {
@@ -64,27 +66,76 @@ async function withModelFallback<T>(run: (modelName: string) => Promise<T>): Pro
   throw lastError;
 }
 
+async function generateWithGoogleSearch(
+  modelName: string,
+  systemInstruction: string,
+  contents: Array<{ role: "user" | "model"; parts: { text: string }[] }>
+) {
+  const genAI = getClient();
+  const model = genAI.getGenerativeModel({
+    model: modelName,
+    systemInstruction,
+    tools: GOOGLE_SEARCH_TOOLS,
+  });
+  const result = await model.generateContent({ contents });
+  return extractText(result.response);
+}
+
+function buildRecommendFromNaver(
+  places: NonNullable<Awaited<ReturnType<typeof searchNaverPlaces>>>,
+  categoryLabel: string,
+  keywords: string[]
+): RecommendResult {
+  return {
+    category: categoryLabel,
+    keywords,
+    source: "naver",
+    summary: `네이버 지역 검색(리뷰 많은 순) 결과 ${places.length}곳입니다. 아래는 실제 검색 결과이며, 방문 전 네이버 지도에서 최신 정보를 확인해주세요.`,
+    items: places.map((p) => ({
+      name: p.name,
+      area: p.address,
+      reason: p.description || `${p.category} · 네이버 지역 검색 결과`,
+      highlights: p.category,
+      rankHint: "네이버 지역 검색 · 리뷰순",
+      naverSearchQuery: p.naverSearchQuery,
+      naverPlaceUrl: p.link,
+    })),
+  };
+}
+
 export async function chatWithGemini(
   messages: ChatMessage[],
   nickname?: string
-): Promise<string> {
-  const { history, last } = buildHistory(messages);
-  if (!last || last.role !== "user") {
-    throw new Error("INVALID_USER_MESSAGE");
+): Promise<{ reply: string; sources: string[] }> {
+  const apiMessages = toApiMessages(messages);
+  const last = apiMessages[apiMessages.length - 1];
+  if (!last || last.role !== "user") throw new Error("INVALID_USER_MESSAGE");
+
+  const sources: string[] = [];
+  const naverBlock = await getNaverContextBlock(last.content);
+  if (naverBlock) sources.push("네이버 지역 검색");
+
+  const prefix = nickname ? `[${nickname}] ` : "";
+  let userText = `${prefix}${last.content}`;
+  if (naverBlock) {
+    userText += `\n\n[네이버 지역 검색 결과 - 아래 업체만 추천 가능]\n${naverBlock}`;
   }
 
-  return withModelFallback(async (modelName) => {
-    const genAI = getClient();
-    const model = genAI.getGenerativeModel({
-      model: modelName,
-      systemInstruction: ASSISTANT_PERSONA,
-    });
+  userText += `\n\n(지시: Google 검색과 위 데이터를 활용해 팩트 기반으로 답변. 말미에 "📍 출처: ..." 로 표시)`;
 
-    const prefix = nickname ? `[${nickname}] ` : "";
-    const chat = model.startChat({ history });
-    const result = await chat.sendMessage(`${prefix}${last.content}`);
-    return extractText(result.response);
-  });
+  const contents = buildGeminiContents(apiMessages.slice(0, -1));
+  contents.push({ role: "user", parts: [{ text: userText }] });
+
+  const reply = await withModelFallback((modelName) =>
+    generateWithGoogleSearch(
+      modelName,
+      `${ASSISTANT_PERSONA}\nGoogle 검색 도구로 최신 정보를 확인한 뒤 답변하세요.`,
+      contents
+    )
+  );
+
+  sources.push("Google 검색");
+  return { reply, sources: Array.from(new Set(sources)) };
 }
 
 export async function getRecommendations(
@@ -92,51 +143,56 @@ export async function getRecommendations(
   categoryLabel: string,
   matchedKeywords: string[]
 ): Promise<RecommendResult> {
-  const prompt = `다음 게시글 내용을 분석해 판교 지역 ${categoryLabel} 추천을 JSON으로 반환하세요.
+  const naverQuery = buildNaverQuery(content, categoryLabel, matchedKeywords);
+  const naverPlaces = await searchNaverPlaces(naverQuery, 5);
+
+  if (naverPlaces && naverPlaces.length > 0) {
+    return buildRecommendFromNaver(naverPlaces, categoryLabel, matchedKeywords);
+  }
+
+  const prompt = `판교 지역 ${categoryLabel} 추천을 Google 검색으로 조사한 뒤 JSON으로 반환하세요.
+${FACT_RULES}
 
 게시글: """${content}"""
-감지된 키워드: ${matchedKeywords.join(", ")}
+키워드: ${matchedKeywords.join(", ")}
 
-아래 JSON 스키마를 정확히 따르세요:
+JSON 스키마:
 {
   "category": "${categoryLabel}",
-  "keywords": ["감지된 키워드들"],
-  "summary": "추천 요약 1~2문장",
-  "items": [
-    {
-      "name": "업체명",
-      "area": "판교역/백현동/테크노밸리 등 구체적 위치",
-      "reason": "추천 이유 (검색·리뷰 인기 근거 포함)",
-      "highlights": "대표 메뉴나 특징",
-      "rankHint": "네이버/검색 인기도 설명 (예: 네이버 리뷰 4.5+)",
-      "naverSearchQuery": "네이버 검색용 키워드 (예: 판교역 ○○식당)"
-    }
-  ]
+  "keywords": ${JSON.stringify(matchedKeywords)},
+  "source": "google",
+  "summary": "Google 검색 기반 요약",
+  "items": [{
+    "name": "업체명",
+    "area": "주소",
+    "reason": "Google 검색에서 확인된 근거",
+    "highlights": "대표 특징",
+    "rankHint": "Google 검색 기준",
+    "naverSearchQuery": "네이버 검색어"
+  }]
 }
 
-규칙:
-- items는 3~5개
-- 실제 판교·분당 지역에 있을 법한 곳 위주
-- 맛집이면 네이버 맛집 검색 순위·리뷰가 좋은 곳 스타일로 추천
-- JSON만 출력`;
+items 3~5개, Google 검색으로 확인된 곳만, JSON만 출력`;
 
   return withModelFallback(async (modelName) => {
     const genAI = getClient();
     const model = genAI.getGenerativeModel({
       model: modelName,
       systemInstruction: ASSISTANT_PERSONA,
+      tools: GOOGLE_SEARCH_TOOLS,
     });
 
     const result = await model.generateContent(prompt);
     const text = extractText(result.response);
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     const parsed = JSON.parse(jsonMatch?.[0] ?? text) as RecommendResult;
-
+    parsed.source = "google";
+    parsed.summary =
+      parsed.summary || "Google 검색 기반 추천입니다. 방문 전 네이버 지도에서 최신 정보를 확인해주세요.";
     parsed.items = (parsed.items || []).map((item) => ({
       ...item,
       naverSearchQuery: item.naverSearchQuery || `판교 ${item.name}`,
     }));
-
     return parsed;
   });
 }
@@ -147,7 +203,7 @@ export function enrichRecommendLinks(result: RecommendResult) {
     items: result.items.map((item) => ({
       ...item,
       naverSearchUrl: buildNaverSearchUrl(item.naverSearchQuery),
-      naverMapUrl: buildNaverPlaceSearchUrl(item.naverSearchQuery),
+      naverMapUrl: item.naverPlaceUrl || buildNaverPlaceSearchUrl(item.naverSearchQuery),
     })),
   };
 }
@@ -170,4 +226,10 @@ export function getGeminiErrorMessage(err: unknown): string {
     }
   }
   return "AI 응답 생성에 실패했습니다. 잠시 후 다시 시도해주세요.";
+}
+
+export function getSourceLabel(source?: string) {
+  if (source === "naver") return "네이버 지역 검색 (리뷰순)";
+  if (source === "google") return "Google 검색";
+  return "검색 기반";
 }

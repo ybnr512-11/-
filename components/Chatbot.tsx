@@ -19,7 +19,7 @@ export default function Chatbot({ nickname }: ChatbotProps) {
     {
       role: "assistant",
       content:
-        "안녕하세요! 판교 AI 도우미예요 🏙️\n맛집, 카페, 교통, 생활 정보 무엇이든 물어보세요. 네이버 인기 맛집 스타일로 추천해드릴게요!",
+        "안녕하세요! 판교 AI 도우미예요 🏙️\n맛집·카페 질문은 **네이버 지역 검색**과 **Google 검색** 결과를 바탕으로 팩트 기반으로 답변해드립니다.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -54,7 +54,10 @@ export default function Chatbot({ nickname }: ChatbotProps) {
         setMessages(messages);
         return;
       }
-      setMessages([...nextMessages, { role: "assistant", content: data.reply }]);
+      setMessages([
+        ...nextMessages,
+        { role: "assistant", content: data.reply, sources: data.sources },
+      ]);
     } catch {
       setError("네트워크 오류가 발생했습니다");
       setMessages(messages);
@@ -66,8 +69,8 @@ export default function Chatbot({ nickname }: ChatbotProps) {
   return (
     <div className="chatbot">
       <div className="chatbot-header">
-        <span className="chatbot-badge">Gemini 2.5 Flash</span>
-        <p>판교 지역 맛집·카페·생활 정보 AI 도우미</p>
+        <span className="chatbot-badge">검색 기반 AI</span>
+        <p>네이버 지역 검색 + Google 검색 팩트 기반 답변</p>
       </div>
 
       {messages.length === 1 && (
@@ -87,7 +90,12 @@ export default function Chatbot({ nickname }: ChatbotProps) {
             className={`chatbot-bubble ${msg.role === "user" ? "user" : "assistant"}`}
           >
             {msg.role === "assistant" && <span className="chatbot-avatar">🤖</span>}
-            <div className="chatbot-text">{msg.content}</div>
+            <div className="chatbot-text">
+              {msg.content}
+              {msg.sources && msg.sources.length > 0 && (
+                <span className="chatbot-sources">📍 출처: {msg.sources.join(" · ")}</span>
+              )}
+            </div>
           </div>
         ))}
         {loading && (
