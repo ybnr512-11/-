@@ -20,7 +20,13 @@ cp .env.example .env.local
 npm run dev
 ```
 
-브라우저에서 http://localhost:3000 을 열어주세요.
+브라우저에서 http://localhost:3000 을 열어주세요. (본인 PC 개발용)
+
+## 공개 접속 주소 (외부 PC·휴대폰)
+
+**https://ybnr512-11.vercel.app**
+
+> `localhost:3000` 은 내 컴퓨터에서만 열립니다. 다른 사람에게 공유할 때는 위 Vercel 주소를 사용하세요.
 
 ## Vercel 배포 순서
 

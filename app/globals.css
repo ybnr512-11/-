@@ -1048,6 +1048,20 @@ textarea {
   color: var(--text-muted);
 }
 
+.footer-link {
+  margin-top: 0.35rem;
+}
+
+.footer-link a {
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.footer-link a:hover {
+  text-decoration: underline;
+}
+
 /* ── Responsive ── */
 @media (min-width: 480px) {
   .logo h1 {
