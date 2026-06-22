@@ -26,7 +26,8 @@ export async function chatWithGemini(
   const model = genAI.getGenerativeModel({
     model: MODEL,
     systemInstruction: ASSISTANT_PERSONA,
-    tools: [{ googleSearch: {} }],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tools: [{ googleSearch: {} }] as any,
   });
 
   const history = messages.slice(0, -1).map((m) => ({
@@ -50,7 +51,8 @@ export async function getRecommendations(
   const model = genAI.getGenerativeModel({
     model: MODEL,
     systemInstruction: ASSISTANT_PERSONA,
-    tools: [{ googleSearch: {} }],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tools: [{ googleSearch: {} }] as any,
   });
 
   const prompt = `다음 게시글 내용을 분석해 판교 지역 ${categoryLabel} 추천을 JSON으로 반환하세요.

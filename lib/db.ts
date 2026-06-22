@@ -2,8 +2,12 @@ import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
 
-const dbPath = path.join(process.cwd(), "data", "community.db");
-const uploadsDir = path.join(process.cwd(), "public", "uploads");
+const dbPath = process.env.VERCEL
+  ? path.join("/tmp", "community.db")
+  : path.join(process.cwd(), "data", "community.db");
+const uploadsDir = process.env.VERCEL
+  ? path.join("/tmp", "uploads")
+  : path.join(process.cwd(), "public", "uploads");
 
 function ensureDirs() {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });

@@ -22,14 +22,30 @@ npm run dev
 
 브라우저에서 http://localhost:3000 을 열어주세요.
 
-## Vercel 배포 & API Key 설정
+## Vercel 배포 순서
 
-1. [Vercel](https://vercel.com)에 프로젝트 연결
-2. **Project Settings → Environment Variables** 이동
-3. `GEMINI_API_KEY` 추가 (Google AI Studio에서 발급)
-4. Redeploy
+**맞습니다. API Key는 배포 후 Vercel 대시보드에서 넣습니다.**
 
-> **참고:** 실시간 채팅(Socket.io)은 커스텀 서버(`server.js`)가 필요합니다. Vercel Serverless에서는 Socket.io가 제한될 수 있어, AI 기능(API Routes) 위주로 Vercel 배포를 권장합니다.
+### 1단계 — Vercel에 배포
+
+1. https://vercel.com 접속 후 GitHub 계정 연결
+2. **Add New Project** → `ybnr512-11/-` 저장소 Import
+3. Framework: **Next.js** (자동 감지)
+4. **Deploy** 클릭 → 첫 배포 완료 (아직 AI는 동작 안 함)
+
+### 2단계 — API Key 등록
+
+1. Vercel 프로젝트 → **Settings → Environment Variables**
+2. Name: `GEMINI_API_KEY` / Value: [Google AI Studio](https://aistudio.google.com/apikey)에서 발급한 키
+3. Environment: **Production**, **Preview**, **Development** 모두 체크
+4. Save
+
+### 3단계 — 재배포
+
+1. **Deployments** 탭 → 최신 배포 → **Redeploy**
+2. 배포 완료 후 사이트에서 **🤖 AI 도우미** 탭 테스트
+
+> **참고:** Vercel Serverless에서는 실시간 채팅(Socket.io)과 DB·이미지가 인스턴스마다 초기화될 수 있습니다. AI 기능(API Routes)은 `GEMINI_API_KEY` 설정 후 정상 동작합니다.
 
 ## AI 기능
 
