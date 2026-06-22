@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { formatTime } from "@/lib/utils";
+import { resolveImageUrl } from "@/lib/image-url";
 import { buildLocationUrl, isValidMapUrl } from "@/lib/map";
 import { Socket } from "socket.io-client";
 import MapPreview from "./MapPreview";
@@ -302,7 +303,7 @@ export default function PostCard({
 
       {post.image_url && (
         <div className="post-image">
-          <img src={post.image_url} alt="게시글 이미지" loading="lazy" />
+          <img src={resolveImageUrl(post.image_url)!} alt="게시글 이미지" loading="lazy" />
         </div>
       )}
       <RecommendationPanel content={post.content} />
@@ -378,7 +379,7 @@ export default function PostCard({
                     {c.content && <p className="comment-content">{c.content}</p>}
                     {c.image_url && (
                       <div className="comment-image">
-                        <img src={c.image_url} alt="댓글 이미지" loading="lazy" />
+                        <img src={resolveImageUrl(c.image_url)!} alt="댓글 이미지" loading="lazy" />
                       </div>
                     )}
                     {c.map_url && <MapPreview url={c.map_url} compact />}

@@ -23,8 +23,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "메시지는 1000자 이하입니다" }, { status: 400 });
     }
 
-    const { reply, sources } = await chatWithGemini(messages, nickname);
-    return NextResponse.json({ reply, sources });
+    const { reply, sources, placeLinks } = await chatWithGemini(messages, nickname);
+    return NextResponse.json({ reply, sources, placeLinks });
   } catch (err) {
     console.error("Chatbot error:", err);
     const message = getGeminiErrorMessage(err);

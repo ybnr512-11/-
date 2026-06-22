@@ -1,9 +1,10 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import type { ChatMessage, RecommendResult } from "@/lib/ai-types";
+import type { ChatMessage, PlaceLink, RecommendResult } from "@/lib/ai-types";
 import { buildNaverPlaceSearchUrl, buildNaverSearchUrl } from "@/lib/keywords";
 import {
   buildNaverQuery,
   getNaverContextBlock,
+  isPlaceRelatedQuery,
   searchNaverPlaces,
 } from "@/lib/naver-search";
 
@@ -106,14 +107,31 @@ function buildRecommendFromNaver(
 export async function chatWithGemini(
   messages: ChatMessage[],
   nickname?: string
-): Promise<{ reply: string; sources: string[] }> {
+): Promise<{ reply: string; sources: string[]; placeLinks: PlaceLink[] }> {
   const apiMessages = toApiMessages(messages);
   const last = apiMessages[apiMessages.length - 1];
   if (!last || last.role !== "user") throw new Error("INVALID_USER_MESSAGE");
 
   const sources: string[] = [];
+  const placeLinks: PlaceLink[] = [];
+
   const naverBlock = await getNaverContextBlock(last.content);
   if (naverBlock) sources.push("네이버 지역 검색");
+
+  if (isPlaceRelatedQuery(last.content)) {
+    const query = last.content.includes("판교") ? last.content : `판교 ${last.content}`;
+    const places = await searchNaverPlaces(query, 5);
+    if (places?.length) {
+      for (const p of places) {
+        placeLinks.push({
+          name: p.name,
+          address: p.address,
+          mapUrl: buildNaverPlaceSearchUrl(p.naverSearchQuery),
+          placeUrl: p.link,
+        });
+      }
+    }
+  }
 
   const prefix = nickname ? `[${nickname}] ` : "";
   let userText = `${prefix}${last.content}`;
@@ -121,21 +139,28 @@ export async function chatWithGemini(
     userText += `\n\n[네이버 지역 검색 결과 - 아래 업체만 추천 가능]\n${naverBlock}`;
   }
 
-  userText += `\n\n(지시: Google 검색과 위 데이터를 활용해 팩트 기반으로 답변. 말미에 "📍 출처: ..." 로 표시)`;
+  userText += `\n\n(지시: Google 검색과 위 데이터를 활용해 팩트 기반으로 답변. 추천하는 각 장소는 반드시 [업체명](네이버링크) 마크다운 형식으로 네이버 지도/플레이스 링크를 포함. 말미에 "📍 출처: ..." 로 표시)`;
 
   const contents = buildGeminiContents(apiMessages.slice(0, -1));
   contents.push({ role: "user", parts: [{ text: userText }] });
 
-  const reply = await withModelFallback((modelName) =>
+  let reply = await withModelFallback((modelName) =>
     generateWithGoogleSearch(
       modelName,
-      `${ASSISTANT_PERSONA}\nGoogle 검색 도구로 최신 정보를 확인한 뒤 답변하세요.`,
+      `${ASSISTANT_PERSONA}\nGoogle 검색 도구로 최신 정보를 확인한 뒤 답변하세요. 장소 추천 시 각 업체명을 [이름](링크) 형식의 클릭 가능한 마크다운 링크로 작성하세요.`,
       contents
     )
   );
 
+  if (placeLinks.length > 0 && !reply.includes("map.naver") && !reply.includes("place.naver")) {
+    reply += "\n\n🗺️ **네이버 지도 바로가기**\n";
+    reply += placeLinks
+      .map((p) => `- [${p.name}](${p.placeUrl || p.mapUrl}) · ${p.address}`)
+      .join("\n");
+  }
+
   sources.push("Google 검색");
-  return { reply, sources: Array.from(new Set(sources)) };
+  return { reply, sources: Array.from(new Set(sources)), placeLinks };
 }
 
 export async function getRecommendations(

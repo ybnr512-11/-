@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
-import fs from "fs";
-import path from "path";
-import { createPost, getPosts, uploadsDir } from "@/lib/db";
+import { createPost, getPosts } from "@/lib/db";
+import { saveUploadedImage } from "@/lib/upload";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -28,14 +27,14 @@ export async function POST(request: NextRequest) {
 
     let imageUrl: string | null = null;
     if (image && image.size > 0) {
-      if (image.size > 5 * 1024 * 1024) {
-        return NextResponse.json({ error: "이미지는 5MB 이하만 가능합니다" }, { status: 400 });
+      try {
+        imageUrl = await saveUploadedImage(image);
+      } catch (err) {
+        if (err instanceof Error && err.message === "IMAGE_TOO_LARGE") {
+          return NextResponse.json({ error: "이미지는 5MB 이하만 가능합니다" }, { status: 400 });
+        }
+        throw err;
       }
-      const ext = path.extname(image.name) || ".jpg";
-      const filename = `${uuidv4()}${ext}`;
-      const buffer = Buffer.from(await image.arrayBuffer());
-      fs.writeFileSync(path.join(uploadsDir, filename), buffer);
-      imageUrl = `/uploads/${filename}`;
     }
 
     const post = createPost(uuidv4(), nickname, content, imageUrl);

@@ -5,3 +5,4 @@ public/uploads/
 *.log
 .env
 .env.local
+.vercel

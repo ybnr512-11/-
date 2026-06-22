@@ -18,8 +18,16 @@ export interface RecommendResult {
   items: RecommendItem[];
 }
 
+export interface PlaceLink {
+  name: string;
+  address: string;
+  mapUrl: string;
+  placeUrl: string;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   sources?: string[];
+  placeLinks?: PlaceLink[];
 }

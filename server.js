@@ -31,16 +31,24 @@ app.prepare().then(() => {
   io.on("connection", (socket) => {
     socket.on("chat:message", async (data) => {
       const nickname = data?.nickname?.trim();
-      const content = data?.content?.trim();
+      const content = (data?.content || "").trim();
+      const imageUrl = data?.image_url || null;
 
-      if (!nickname || !content || content.length > 500) return;
+      if (!nickname || (!content && !imageUrl)) return;
+      if (content.length > 500) return;
 
       try {
         const { createChatMessage } = require("./lib/chat-store.js");
-        const message = createChatMessage(uuidv4(), nickname, content);
+        const message = createChatMessage(uuidv4(), nickname, content, imageUrl);
         io.emit("chat:message", message);
       } catch (err) {
         console.error("Chat message error:", err);
+      }
+    });
+
+    socket.on("chat:broadcast", (message) => {
+      if (message?.id && message?.nickname) {
+        io.emit("chat:message", message);
       }
     });
 

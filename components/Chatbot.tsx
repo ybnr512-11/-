@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import type { ChatMessage } from "@/lib/ai-types";
+import { Fragment, useEffect, useRef, useState } from "react";
+import type { ChatMessage, PlaceLink } from "@/lib/ai-types";
 
 interface ChatbotProps {
   nickname: string;
@@ -14,12 +14,42 @@ const STARTERS = [
   "판교 회식하기 좋은 곳",
 ];
 
+function renderMarkdownLinks(text: string) {
+  const parts = text.split(/(\[[^\]]+\]\([^)]+\))/g);
+  return parts.map((part, i) => {
+    const match = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+    if (match) {
+      return (
+        <a
+          key={i}
+          href={match[2]}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="chatbot-link"
+        >
+          {match[1]}
+        </a>
+      );
+    }
+    return (
+      <Fragment key={i}>
+        {part.split("\n").map((line, j, arr) => (
+          <Fragment key={j}>
+            {line}
+            {j < arr.length - 1 && <br />}
+          </Fragment>
+        ))}
+      </Fragment>
+    );
+  });
+}
+
 export default function Chatbot({ nickname }: ChatbotProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
       content:
-        "안녕하세요! 판교 AI 도우미예요 🏙️\n맛집·카페 질문은 **네이버 지역 검색**과 **Google 검색** 결과를 바탕으로 팩트 기반으로 답변해드립니다.",
+        "안녕하세요! 판교 AI 도우미예요 🏙️\n맛집·카페 질문은 **네이버 지역 검색**과 **Google 검색** 결과를 바탕으로 팩트 기반으로 답변해드립니다.\n추천 장소는 네이버 지도 링크로 바로 연결해드려요.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -56,7 +86,12 @@ export default function Chatbot({ nickname }: ChatbotProps) {
       }
       setMessages([
         ...nextMessages,
-        { role: "assistant", content: data.reply, sources: data.sources },
+        {
+          role: "assistant",
+          content: data.reply,
+          sources: data.sources,
+          placeLinks: data.placeLinks,
+        },
       ]);
     } catch {
       setError("네트워크 오류가 발생했습니다");
@@ -70,7 +105,7 @@ export default function Chatbot({ nickname }: ChatbotProps) {
     <div className="chatbot">
       <div className="chatbot-header">
         <span className="chatbot-badge">검색 기반 AI</span>
-        <p>네이버 지역 검색 + Google 검색 팩트 기반 답변</p>
+        <p>네이버 지역 검색 + Google 검색 · 장소 추천 시 네이버 지도 링크 제공</p>
       </div>
 
       {messages.length === 1 && (
@@ -91,7 +126,22 @@ export default function Chatbot({ nickname }: ChatbotProps) {
           >
             {msg.role === "assistant" && <span className="chatbot-avatar">🤖</span>}
             <div className="chatbot-text">
-              {msg.content}
+              {renderMarkdownLinks(msg.content)}
+              {msg.placeLinks && msg.placeLinks.length > 0 && (
+                <div className="chatbot-place-links">
+                  {msg.placeLinks.map((p: PlaceLink) => (
+                    <a
+                      key={`${p.name}-${p.address}`}
+                      href={p.placeUrl || p.mapUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="place-link-btn"
+                    >
+                      🗺️ {p.name}
+                    </a>
+                  ))}
+                </div>
+              )}
               {msg.sources && msg.sources.length > 0 && (
                 <span className="chatbot-sources">📍 출처: {msg.sources.join(" · ")}</span>
               )}

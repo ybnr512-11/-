@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Socket } from "socket.io-client";
 import { formatTime } from "@/lib/utils";
+import { resolveImageUrl } from "@/lib/image-url";
 
 interface ChatMessage {
   id: string;
   nickname: string;
   content: string;
+  image_url: string | null;
   created_at: number;
 }
 
@@ -19,9 +21,12 @@ interface ChatRoomProps {
 export default function ChatRoom({ nickname, socket }: ChatRoomProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const [image, setImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const loadMessages = useCallback(async () => {
@@ -62,30 +67,52 @@ export default function ChatRoom({ nickname, socket }: ChatRoomProps) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const clearImage = () => {
+    setImage(null);
+    setImagePreview(null);
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
+  const pickImage = (file: File | null) => {
+    clearImage();
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setError("이미지는 5MB 이하만 가능합니다");
+      return;
+    }
+    setImage(file);
+    setImagePreview(URL.createObjectURL(file));
+  };
+
   const send = async () => {
     const text = input.trim();
-    if (!text || sending) return;
+    if ((!text && !image) || sending) return;
     setSending(true);
     setError("");
 
     try {
-      if (socket?.connected) {
-        socket.emit("chat:message", { nickname, content: text });
+      if (image || !socket?.connected) {
+        const formData = new FormData();
+        formData.append("nickname", nickname);
+        formData.append("content", text);
+        if (image) formData.append("image", image);
+
+        const res = await fetch("/api/chat", { method: "POST", body: formData });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.error || "전송 실패");
+          return;
+        }
+        setMessages((prev) => [...prev.filter((m) => m.id !== data.id), data]);
+        if (socket?.connected) {
+          socket.emit("chat:broadcast", data);
+        }
         setInput("");
+        clearImage();
         return;
       }
 
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nickname, content: text }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "전송 실패");
-        return;
-      }
-      setMessages((prev) => [...prev, data]);
+      socket.emit("chat:message", { nickname, content: text });
       setInput("");
     } catch {
       setError("네트워크 오류가 발생했습니다");
@@ -106,6 +133,7 @@ export default function ChatRoom({ nickname, socket }: ChatRoomProps) {
         )}
         {messages.map((msg) => {
           const isMe = msg.nickname === nickname;
+          const imgSrc = resolveImageUrl(msg.image_url);
           return (
             <div key={msg.id} className={`chat-item ${isMe ? "mine" : "other"}`}>
               <div className="chat-meta">
@@ -116,14 +144,42 @@ export default function ChatRoom({ nickname, socket }: ChatRoomProps) {
                 <time>{formatTime(msg.created_at)}</time>
               </div>
               <div className={`chat-bubble ${isMe ? "mine" : "other"}`}>
-                <p>{msg.content}</p>
+                {msg.content && <p>{msg.content}</p>}
+                {imgSrc && (
+                  <div className="chat-image">
+                    <img src={imgSrc} alt="채팅 이미지" loading="lazy" />
+                  </div>
+                )}
               </div>
             </div>
           );
         })}
         <div ref={bottomRef} />
       </div>
+      {imagePreview && (
+        <div className="chat-image-preview">
+          <img src={imagePreview} alt="첨부 미리보기" />
+          <button type="button" className="btn-ghost btn-sm" onClick={clearImage}>
+            ✕
+          </button>
+        </div>
+      )}
       <div className="chat-input">
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          className="hidden-input"
+          onChange={(e) => pickImage(e.target.files?.[0] ?? null)}
+        />
+        <button
+          type="button"
+          className="btn-ghost chat-attach"
+          onClick={() => fileRef.current?.click()}
+          title="이미지 첨부"
+        >
+          📷
+        </button>
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -134,7 +190,7 @@ export default function ChatRoom({ nickname, socket }: ChatRoomProps) {
         <button
           className="btn-primary"
           onClick={send}
-          disabled={!input.trim() || sending}
+          disabled={(!input.trim() && !image) || sending}
         >
           {sending ? "..." : "전송"}
         </button>

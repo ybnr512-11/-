@@ -14,5 +14,5 @@ export async function saveUploadedImage(image: File): Promise<string | null> {
   const filename = `${uuidv4()}${ext}`;
   const buffer = Buffer.from(await image.arrayBuffer());
   fs.writeFileSync(path.join(uploadsDir, filename), buffer);
-  return `/uploads/${filename}`;
+  return `/api/uploads/${filename}`;
 }

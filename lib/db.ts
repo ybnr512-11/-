@@ -62,6 +62,7 @@ function initSchema(database: Database.Database) {
       id TEXT PRIMARY KEY,
       nickname TEXT NOT NULL,
       content TEXT NOT NULL,
+      image_url TEXT,
       created_at INTEGER NOT NULL
     );
 
@@ -70,6 +71,15 @@ function initSchema(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_messages(created_at DESC);
   `);
   migrateCommentsTable(database);
+  migrateChatTable(database);
+}
+
+function migrateChatTable(database: Database.Database) {
+  const columns = database.prepare("PRAGMA table_info(chat_messages)").all() as { name: string }[];
+  const names = new Set(columns.map((c) => c.name));
+  if (!names.has("image_url")) {
+    database.exec("ALTER TABLE chat_messages ADD COLUMN image_url TEXT");
+  }
 }
 
 export interface Post {
@@ -95,6 +105,7 @@ export interface ChatMessage {
   id: string;
   nickname: string;
   content: string;
+  image_url: string | null;
   created_at: number;
 }
 
@@ -231,16 +242,17 @@ export function getChatMessages(limit = 100): ChatMessage[] {
 export function createChatMessage(
   id: string,
   nickname: string,
-  content: string
+  content: string,
+  imageUrl: string | null = null
 ): ChatMessage {
   const database = getDb();
   const createdAt = Date.now();
   database
     .prepare(
-      "INSERT INTO chat_messages (id, nickname, content, created_at) VALUES (?, ?, ?, ?)"
+      "INSERT INTO chat_messages (id, nickname, content, image_url, created_at) VALUES (?, ?, ?, ?, ?)"
     )
-    .run(id, nickname, content, createdAt);
-  return { id, nickname, content, created_at: createdAt };
+    .run(id, nickname, content, imageUrl, createdAt);
+  return { id, nickname, content, image_url: imageUrl, created_at: createdAt };
 }
 
 export { uploadsDir };
