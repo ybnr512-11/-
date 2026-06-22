@@ -388,9 +388,74 @@ textarea {
 /* ── Post Card ── */
 .post-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.65rem;
   margin-bottom: 0.65rem;
+}
+
+.post-header-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-actions {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.btn-action {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: white;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-action:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.btn-action.danger:hover {
+  border-color: #dc2626;
+  color: #dc2626;
+}
+
+.edit-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.edit-box textarea {
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  font-family: inherit;
+  resize: vertical;
+  background: #fafbfc;
+}
+
+.edit-box textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  background: white;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.chat-error {
+  padding: 0 0.75rem 0.75rem;
 }
 
 .avatar {
@@ -462,7 +527,8 @@ textarea {
 
 .comment-header {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 0.5rem;
   margin-bottom: 0.25rem;
 }
@@ -470,11 +536,13 @@ textarea {
 .comment-header strong {
   color: var(--primary);
   font-size: 0.88rem;
+  display: block;
 }
 
 .comment-header time {
   font-size: 0.72rem;
   color: var(--text-muted);
+  display: block;
 }
 
 .comment-content {

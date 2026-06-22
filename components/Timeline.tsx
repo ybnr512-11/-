@@ -67,7 +67,18 @@ export default function Timeline({ nickname, socket }: TimelineProps) {
       ) : (
         <div className="posts-list">
           {posts.map((post) => (
-            <PostCard key={post.id} post={post} nickname={nickname} socket={socket} />
+            <PostCard
+              key={post.id}
+              post={post}
+              nickname={nickname}
+              socket={socket}
+              onPostUpdated={(updated) =>
+                setPosts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+              }
+              onPostDeleted={(postId) =>
+                setPosts((prev) => prev.filter((p) => p.id !== postId))
+              }
+            />
           ))}
         </div>
       )}

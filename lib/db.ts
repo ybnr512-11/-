@@ -141,6 +141,31 @@ export function createPost(
   return { id, nickname, content, image_url: imageUrl, created_at: createdAt, comment_count: 0 };
 }
 
+export function updatePost(id: string, content: string): Post | undefined {
+  const database = getDb();
+  database.prepare("UPDATE posts SET content = ? WHERE id = ?").run(content, id);
+  return getPost(id);
+}
+
+export function deletePost(id: string): boolean {
+  const database = getDb();
+  const post = database.prepare("SELECT image_url FROM posts WHERE id = ?").get(id) as
+    | { image_url: string | null }
+    | undefined;
+  if (!post) return false;
+  database.prepare("DELETE FROM comments WHERE post_id = ?").run(id);
+  const result = database.prepare("DELETE FROM posts WHERE id = ?").run(id);
+  return result.changes > 0;
+}
+
+export function getPostImageUrl(id: string): string | null {
+  const database = getDb();
+  const row = database.prepare("SELECT image_url FROM posts WHERE id = ?").get(id) as
+    | { image_url: string | null }
+    | undefined;
+  return row?.image_url ?? null;
+}
+
 export function getComments(postId: string): Comment[] {
   const database = getDb();
   return database
@@ -174,6 +199,23 @@ export function createComment(
     map_url: mapUrl,
     created_at: createdAt,
   };
+}
+
+export function getComment(id: string): Comment | undefined {
+  const database = getDb();
+  return database.prepare("SELECT * FROM comments WHERE id = ?").get(id) as Comment | undefined;
+}
+
+export function updateComment(id: string, content: string): Comment | undefined {
+  const database = getDb();
+  database.prepare("UPDATE comments SET content = ? WHERE id = ?").run(content, id);
+  return getComment(id);
+}
+
+export function deleteComment(id: string): boolean {
+  const database = getDb();
+  const result = database.prepare("DELETE FROM comments WHERE id = ?").run(id);
+  return result.changes > 0;
 }
 
 export function getChatMessages(limit = 100): ChatMessage[] {
