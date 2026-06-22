@@ -107,10 +107,17 @@ export default function ChatRoom({ nickname, socket }: ChatRoomProps) {
         {messages.map((msg) => {
           const isMe = msg.nickname === nickname;
           return (
-            <div key={msg.id} className={`chat-bubble ${isMe ? "mine" : "other"}`}>
-              {!isMe && <strong className="chat-nick">{msg.nickname}</strong>}
-              <p>{msg.content}</p>
-              <time>{formatTime(msg.created_at)}</time>
+            <div key={msg.id} className={`chat-item ${isMe ? "mine" : "other"}`}>
+              <div className="chat-meta">
+                <strong className="chat-nick">
+                  {msg.nickname}
+                  {isMe && " (나)"}
+                </strong>
+                <time>{formatTime(msg.created_at)}</time>
+              </div>
+              <div className={`chat-bubble ${isMe ? "mine" : "other"}`}>
+                <p>{msg.content}</p>
+              </div>
             </div>
           );
         })}
