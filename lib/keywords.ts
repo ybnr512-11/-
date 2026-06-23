@@ -50,8 +50,13 @@ export const KEYWORD_CATEGORIES: KeywordCategory[] = [
   },
 ];
 
+const GENERAL_HINTS = ["추천", "어디", "근처", "알려", "찾", "궁금", "장소", "곳", "가볼", "해볼", "좋은", "괜찮", "정보"];
+
 export function detectCategory(content: string) {
-  const lower = content.toLowerCase();
+  const text = content.trim();
+  if (!text) return null;
+
+  const lower = text.toLowerCase();
   let best: { category: KeywordCategory; matched: string[]; score: number } | null = null;
 
   for (const category of KEYWORD_CATEGORIES) {
@@ -61,13 +66,38 @@ export function detectCategory(content: string) {
     }
   }
 
-  if (!best) return null;
-  return {
-    id: best.category.id,
-    label: best.category.label,
-    emoji: best.category.emoji,
-    keywords: best.matched,
-  };
+  if (best) {
+    return {
+      id: best.category.id,
+      label: best.category.label,
+      emoji: best.category.emoji,
+      keywords: best.matched,
+    };
+  }
+
+  const generalMatched = GENERAL_HINTS.filter((hint) => lower.includes(hint));
+  if (generalMatched.length > 0) {
+    return {
+      id: "general",
+      label: "판교",
+      emoji: "🤖",
+      keywords: generalMatched,
+    };
+  }
+
+  return null;
+}
+
+/** 키워드가 없어도 AI 추천 버튼을 보여줄 때 사용 */
+export function detectCategoryOrDefault(content: string) {
+  return (
+    detectCategory(content) ?? {
+      id: "general",
+      label: "판교",
+      emoji: "🤖",
+      keywords: [] as string[],
+    }
+  );
 }
 
 export function buildNaverSearchUrl(query: string) {

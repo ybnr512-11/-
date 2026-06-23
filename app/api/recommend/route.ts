@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { detectCategory } from "@/lib/keywords";
+import { detectCategoryOrDefault } from "@/lib/keywords";
 import { enrichRecommendLinks, getRecommendations, getGeminiErrorMessage } from "@/lib/gemini";
 
 export const dynamic = "force-dynamic";
@@ -14,14 +14,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "게시글 내용이 필요합니다" }, { status: 400 });
     }
 
-    const detected = detectCategory(content);
-    if (!detected) {
-      return NextResponse.json(
-        { error: "추천 가능한 키워드가 감지되지 않았습니다" },
-        { status: 400 }
-      );
-    }
-
+    const detected = detectCategoryOrDefault(content);
     const result = await getRecommendations(content, detected.label, detected.keywords);
     return NextResponse.json(enrichRecommendLinks(result));
   } catch (err) {

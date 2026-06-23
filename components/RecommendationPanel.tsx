@@ -1,20 +1,38 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { detectCategory } from "@/lib/keywords";
-import type { EnrichedRecommendResult } from "@/lib/gemini";
-import { getSourceLabel } from "@/lib/gemini";
+import { detectCategoryOrDefault } from "@/lib/keywords";
+import { getRecommendSourceLabel } from "@/lib/recommend-label";
+
+interface RecommendItem {
+  name: string;
+  area: string;
+  reason: string;
+  highlights: string;
+  rankHint: string;
+  googleMapUrl?: string;
+  naverMapUrl?: string;
+}
+
+interface RecommendData {
+  category: string;
+  keywords: string[];
+  summary: string;
+  source?: "naver" | "google";
+  items: RecommendItem[];
+}
 
 interface RecommendationPanelProps {
   content: string;
 }
 
 export default function RecommendationPanel({ content }: RecommendationPanelProps) {
-  const detected = detectCategory(content);
+  const text = content.trim();
+  const detected = detectCategoryOrDefault(text);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [data, setData] = useState<EnrichedRecommendResult | null>(null);
+  const [data, setData] = useState<RecommendData | null>(null);
 
   useEffect(() => {
     setData(null);
@@ -22,7 +40,7 @@ export default function RecommendationPanel({ content }: RecommendationPanelProp
     setOpen(false);
   }, [content]);
 
-  if (!detected) return null;
+  if (!text) return null;
 
   const fetchRecommendations = async () => {
     if (data) {
@@ -35,7 +53,7 @@ export default function RecommendationPanel({ content }: RecommendationPanelProp
       const res = await fetch("/api/recommend", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content: text }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -51,6 +69,11 @@ export default function RecommendationPanel({ content }: RecommendationPanelProp
     }
   };
 
+  const buttonLabel =
+    detected.id === "general" && detected.keywords.length === 0
+      ? "AI 추천"
+      : `${detected.label} 추천`;
+
   return (
     <div className="recommend-panel">
       <button
@@ -59,7 +82,7 @@ export default function RecommendationPanel({ content }: RecommendationPanelProp
         onClick={fetchRecommendations}
         disabled={loading}
       >
-        {detected.emoji} AI {detected.label} 추천 {loading ? "분석 중..." : open && data ? "접기" : "보기"}
+        {detected.emoji} AI {buttonLabel} {loading ? "분석 중..." : open && data ? "접기" : "보기"}
       </button>
 
       {error && <p className="error-msg">{error}</p>}
@@ -67,7 +90,7 @@ export default function RecommendationPanel({ content }: RecommendationPanelProp
       {open && data && (
         <div className="recommend-body">
           <span className="recommend-source-badge">
-            📍 {getSourceLabel(data.source)} 기반
+            📍 {getRecommendSourceLabel(data.source)} 기반
           </span>
           <p className="recommend-summary">{data.summary}</p>
           <ul className="recommend-list">
