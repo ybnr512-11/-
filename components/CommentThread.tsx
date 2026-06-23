@@ -28,8 +28,6 @@ interface ReplyFormProps {
   parentNickname: string;
   nickname: string;
   depth: number;
-  loading: boolean;
-  setLoading: (v: boolean) => void;
   onSuccess: (comment: FlatComment) => void;
   onCancel: () => void;
   onError: (msg: string) => void;
@@ -41,22 +39,25 @@ function ReplyForm({
   parentNickname,
   nickname,
   depth,
-  loading,
-  setLoading,
   onSuccess,
   onCancel,
   onError,
 }: ReplyFormProps) {
   const [text, setText] = useState(`@${parentNickname} `);
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const submit = async () => {
+    if (!nickname?.trim()) {
+      setError("닉네임을 먼저 설정해주세요");
+      return;
+    }
     const content = text.trim();
     if (!content) {
       setError("답글 내용을 입력해주세요");
       return;
     }
-    setLoading(true);
+    setSubmitting(true);
     setError("");
     try {
       const formData = new FormData();
@@ -70,14 +71,17 @@ function ReplyForm({
       });
       const data = await res.json();
       if (!res.ok) {
+        setError(data.error || "답글 작성 실패");
         onError(data.error || "답글 작성 실패");
         return;
       }
       onSuccess(data);
     } catch {
-      onError("네트워크 오류가 발생했습니다");
+      const msg = "네트워크 오류가 발생했습니다";
+      setError(msg);
+      onError(msg);
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
@@ -96,8 +100,8 @@ function ReplyForm({
         <button type="button" className="btn-ghost btn-sm" onClick={onCancel}>
           취소
         </button>
-        <button type="button" className="btn-primary btn-sm" onClick={submit} disabled={loading}>
-          {loading ? "..." : "답글"}
+        <button type="button" className="btn-primary btn-sm" onClick={submit} disabled={submitting}>
+          {submitting ? "..." : "답글"}
         </button>
       </div>
       {error && <p className="error-msg">{error}</p>}
@@ -112,8 +116,6 @@ interface CommentItemProps {
   nickname: string;
   socket: Socket | null;
   parentNickname?: string;
-  loading: boolean;
-  setLoading: (v: boolean) => void;
   editingCommentId: string | null;
   editCommentText: string;
   setEditingCommentId: (id: string | null) => void;
@@ -123,6 +125,7 @@ interface CommentItemProps {
   onCommentsChange: React.Dispatch<React.SetStateAction<FlatComment[]>>;
   onCommentCountChange: (delta: number) => void;
   onError: (msg: string) => void;
+  onReloadComments: () => Promise<void>;
   allComments: FlatComment[];
 }
 
@@ -133,8 +136,6 @@ function CommentItem({
   nickname,
   socket,
   parentNickname,
-  loading,
-  setLoading,
   editingCommentId,
   editCommentText,
   setEditingCommentId,
@@ -144,8 +145,10 @@ function CommentItem({
   onCommentsChange,
   onCommentCountChange,
   onError,
+  onReloadComments,
   allComments,
 }: CommentItemProps) {
+  const [actionLoading, setActionLoading] = useState(false);
   const isOwner = comment.nickname === nickname;
   const isEditing = editingCommentId === comment.id;
   const isReplying = replyingToId === comment.id;
@@ -153,7 +156,7 @@ function CommentItem({
   const saveEdit = async () => {
     const content = editCommentText.trim();
     if (!content) return;
-    setLoading(true);
+    setActionLoading(true);
     try {
       const res = await fetch(`/api/posts/${postId}/comments/${comment.id}`, {
         method: "PATCH",
@@ -170,13 +173,13 @@ function CommentItem({
     } catch {
       onError("네트워크 오류가 발생했습니다");
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
   const deleteHandler = async () => {
     if (!confirm("댓글과 하위 답글을 모두 삭제할까요?")) return;
-    setLoading(true);
+    setActionLoading(true);
     try {
       const res = await fetch(`/api/posts/${postId}/comments/${comment.id}`, {
         method: "DELETE",
@@ -195,7 +198,7 @@ function CommentItem({
     } catch {
       onError("네트워크 오류가 발생했습니다");
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
@@ -248,7 +251,7 @@ function CommentItem({
               rows={2}
             />
             <div className="edit-actions">
-              <button type="button" className="btn-primary btn-sm" onClick={saveEdit} disabled={loading}>
+              <button type="button" className="btn-primary btn-sm" onClick={saveEdit} disabled={actionLoading}>
                 저장
               </button>
               <button type="button" className="btn-ghost btn-sm" onClick={() => setEditingCommentId(null)}>
@@ -283,11 +286,12 @@ function CommentItem({
           parentNickname={comment.nickname}
           nickname={nickname}
           depth={depth + 1}
-          loading={loading}
-          setLoading={setLoading}
           onSuccess={handleReplySuccess}
           onCancel={() => setReplyingToId(null)}
-          onError={onError}
+          onError={async (msg) => {
+            onError(msg);
+            if (msg.includes("답글 대상")) await onReloadComments();
+          }}
         />
       )}
 
@@ -302,8 +306,6 @@ function CommentItem({
               nickname={nickname}
               socket={socket}
               parentNickname={comment.nickname}
-              loading={loading}
-              setLoading={setLoading}
               editingCommentId={editingCommentId}
               editCommentText={editCommentText}
               setEditingCommentId={setEditingCommentId}
@@ -313,6 +315,7 @@ function CommentItem({
               onCommentsChange={onCommentsChange}
               onCommentCountChange={onCommentCountChange}
               onError={onError}
+              onReloadComments={onReloadComments}
               allComments={allComments}
             />
           ))}
@@ -343,6 +346,12 @@ export default function CommentThread({
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
 
   const tree = useMemo(() => buildCommentTree(comments), [comments]);
+
+  const reloadComments = async () => {
+    const res = await fetch(`/api/posts/${postId}/comments`);
+    const data = await res.json();
+    if (Array.isArray(data)) setComments(data);
+  };
 
   const handleCommentImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -446,8 +455,6 @@ export default function CommentThread({
             postId={postId}
             nickname={nickname}
             socket={socket}
-            loading={loading}
-            setLoading={setLoading}
             editingCommentId={editingCommentId}
             editCommentText={editCommentText}
             setEditingCommentId={setEditingCommentId}
@@ -457,6 +464,7 @@ export default function CommentThread({
             onCommentsChange={setComments}
             onCommentCountChange={onCommentCountChange}
             onError={setError}
+            onReloadComments={reloadComments}
             allComments={comments}
           />
         ))}

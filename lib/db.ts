@@ -14,18 +14,36 @@ function ensureDirs() {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-let db: Database.Database | null = null;
+let localDb: Database.Database | null = null;
 
-export function getDb() {
-  if (!db) {
-    ensureDirs();
-    db = new Database(dbPath);
-    db.pragma("journal_mode = WAL");
-    initSchema(db);
+function openDb(): Database.Database {
+  ensureDirs();
+  const connection = new Database(dbPath);
+  connection.pragma("journal_mode = WAL");
+  connection.pragma("busy_timeout = 5000");
+  connection.pragma("synchronous = NORMAL");
+  initSchema(connection);
+  runMigrations(connection);
+  return connection;
+}
+
+/** Vercel: 요청마다 연결 열고 닫아 잠금·스키마 불일치 방지. 로컬: 연결 재사용 */
+function withDb<T>(fn: (database: Database.Database) => T): T {
+  if (process.env.VERCEL) {
+    const connection = openDb();
+    try {
+      return fn(connection);
+    } finally {
+      connection.close();
+    }
   }
-  // Vercel 서버리스: 배포 후에도 기존 연결이 재사용되면 마이그레이션이 누락될 수 있음
-  runMigrations(db);
-  return db;
+
+  if (!localDb) {
+    localDb = openDb();
+  } else {
+    runMigrations(localDb);
+  }
+  return fn(localDb);
 }
 
 function migrateCommentsTable(database: Database.Database) {
@@ -60,8 +78,7 @@ function initSchema(database: Database.Database) {
       content TEXT NOT NULL,
       image_url TEXT,
       map_url TEXT,
-      created_at INTEGER NOT NULL,
-      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+      created_at INTEGER NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS chat_messages (
@@ -90,6 +107,15 @@ function migrateChatTable(database: Database.Database) {
   if (!names.has("image_url")) {
     database.exec("ALTER TABLE chat_messages ADD COLUMN image_url TEXT");
   }
+}
+
+function normalizeComment(row: Comment): Comment {
+  return {
+    ...row,
+    parent_id: row.parent_id ?? null,
+    image_url: row.image_url ?? null,
+    map_url: row.map_url ?? null,
+  };
 }
 
 export interface Post {
@@ -121,30 +147,34 @@ export interface ChatMessage {
 }
 
 export function getPosts(limit = 50, offset = 0): Post[] {
-  const database = getDb();
-  return database
-    .prepare(
-      `SELECT p.*, COUNT(c.id) as comment_count
-       FROM posts p
-       LEFT JOIN comments c ON c.post_id = p.id
-       GROUP BY p.id
-       ORDER BY p.created_at DESC
-       LIMIT ? OFFSET ?`
-    )
-    .all(limit, offset) as Post[];
+  return withDb(
+    (database) =>
+      database
+        .prepare(
+          `SELECT p.*, COUNT(c.id) as comment_count
+         FROM posts p
+         LEFT JOIN comments c ON c.post_id = p.id
+         GROUP BY p.id
+         ORDER BY p.created_at DESC
+         LIMIT ? OFFSET ?`
+        )
+        .all(limit, offset) as Post[]
+  );
 }
 
 export function getPost(id: string): Post | undefined {
-  const database = getDb();
-  return database
-    .prepare(
-      `SELECT p.*, COUNT(c.id) as comment_count
-       FROM posts p
-       LEFT JOIN comments c ON c.post_id = p.id
-       WHERE p.id = ?
-       GROUP BY p.id`
-    )
-    .get(id) as Post | undefined;
+  return withDb(
+    (database) =>
+      database
+        .prepare(
+          `SELECT p.*, COUNT(c.id) as comment_count
+         FROM posts p
+         LEFT JOIN comments c ON c.post_id = p.id
+         WHERE p.id = ?
+         GROUP BY p.id`
+        )
+        .get(id) as Post | undefined
+  );
 }
 
 export function createPost(
@@ -153,48 +183,60 @@ export function createPost(
   content: string,
   imageUrl: string | null
 ): Post {
-  const database = getDb();
-  const createdAt = Date.now();
-  database
-    .prepare(
-      "INSERT INTO posts (id, nickname, content, image_url, created_at) VALUES (?, ?, ?, ?, ?)"
-    )
-    .run(id, nickname, content, imageUrl, createdAt);
-  return { id, nickname, content, image_url: imageUrl, created_at: createdAt, comment_count: 0 };
+  return withDb((database) => {
+    const createdAt = Date.now();
+    database
+      .prepare(
+        "INSERT INTO posts (id, nickname, content, image_url, created_at) VALUES (?, ?, ?, ?, ?)"
+      )
+      .run(id, nickname, content, imageUrl, createdAt);
+    return { id, nickname, content, image_url: imageUrl, created_at: createdAt, comment_count: 0 };
+  });
 }
 
 export function updatePost(id: string, content: string): Post | undefined {
-  const database = getDb();
-  database.prepare("UPDATE posts SET content = ? WHERE id = ?").run(content, id);
-  return getPost(id);
+  return withDb((database) => {
+    database.prepare("UPDATE posts SET content = ? WHERE id = ?").run(content, id);
+    return database
+      .prepare(
+        `SELECT p.*, COUNT(c.id) as comment_count
+         FROM posts p
+         LEFT JOIN comments c ON c.post_id = p.id
+         WHERE p.id = ?
+         GROUP BY p.id`
+      )
+      .get(id) as Post | undefined;
+  });
 }
 
 export function deletePost(id: string): boolean {
-  const database = getDb();
-  const post = database.prepare("SELECT image_url FROM posts WHERE id = ?").get(id) as
-    | { image_url: string | null }
-    | undefined;
-  if (!post) return false;
-  database.prepare("DELETE FROM comments WHERE post_id = ?").run(id);
-  const result = database.prepare("DELETE FROM posts WHERE id = ?").run(id);
-  return result.changes > 0;
+  return withDb((database) => {
+    const post = database.prepare("SELECT image_url FROM posts WHERE id = ?").get(id) as
+      | { image_url: string | null }
+      | undefined;
+    if (!post) return false;
+    database.prepare("DELETE FROM comments WHERE post_id = ?").run(id);
+    const result = database.prepare("DELETE FROM posts WHERE id = ?").run(id);
+    return result.changes > 0;
+  });
 }
 
 export function getPostImageUrl(id: string): string | null {
-  const database = getDb();
-  const row = database.prepare("SELECT image_url FROM posts WHERE id = ?").get(id) as
-    | { image_url: string | null }
-    | undefined;
-  return row?.image_url ?? null;
+  return withDb((database) => {
+    const row = database.prepare("SELECT image_url FROM posts WHERE id = ?").get(id) as
+      | { image_url: string | null }
+      | undefined;
+    return row?.image_url ?? null;
+  });
 }
 
 export function getComments(postId: string): Comment[] {
-  const database = getDb();
-  return database
-    .prepare(
-      "SELECT * FROM comments WHERE post_id = ? ORDER BY created_at ASC"
-    )
-    .all(postId) as Comment[];
+  return withDb((database) => {
+    const rows = database
+      .prepare("SELECT * FROM comments WHERE post_id = ? ORDER BY created_at ASC")
+      .all(postId) as Comment[];
+    return rows.map(normalizeComment);
+  });
 }
 
 export function createComment(
@@ -206,34 +248,43 @@ export function createComment(
   mapUrl: string | null = null,
   parentId: string | null = null
 ): Comment {
-  const database = getDb();
-  const createdAt = Date.now();
-  database
-    .prepare(
-      "INSERT INTO comments (id, post_id, parent_id, nickname, content, image_url, map_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-    )
-    .run(id, postId, parentId, nickname, content, imageUrl, mapUrl, createdAt);
-  return {
-    id,
-    post_id: postId,
-    parent_id: parentId,
-    nickname,
-    content,
-    image_url: imageUrl,
-    map_url: mapUrl,
-    created_at: createdAt,
-  };
+  return withDb((database) => {
+    const createdAt = Date.now();
+    database
+      .prepare(
+        "INSERT INTO comments (id, post_id, parent_id, nickname, content, image_url, map_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+      )
+      .run(id, postId, parentId, nickname, content, imageUrl, mapUrl, createdAt);
+    return normalizeComment({
+      id,
+      post_id: postId,
+      parent_id: parentId,
+      nickname,
+      content,
+      image_url: imageUrl,
+      map_url: mapUrl,
+      created_at: createdAt,
+    });
+  });
 }
 
 export function getComment(id: string): Comment | undefined {
-  const database = getDb();
-  return database.prepare("SELECT * FROM comments WHERE id = ?").get(id) as Comment | undefined;
+  return withDb((database) => {
+    const row = database.prepare("SELECT * FROM comments WHERE id = ?").get(id) as
+      | Comment
+      | undefined;
+    return row ? normalizeComment(row) : undefined;
+  });
 }
 
 export function updateComment(id: string, content: string): Comment | undefined {
-  const database = getDb();
-  database.prepare("UPDATE comments SET content = ? WHERE id = ?").run(content, id);
-  return getComment(id);
+  return withDb((database) => {
+    database.prepare("UPDATE comments SET content = ? WHERE id = ?").run(content, id);
+    const row = database.prepare("SELECT * FROM comments WHERE id = ?").get(id) as
+      | Comment
+      | undefined;
+    return row ? normalizeComment(row) : undefined;
+  });
 }
 
 function collectChildCommentIds(database: Database.Database, id: string): string[] {
@@ -249,22 +300,22 @@ function collectChildCommentIds(database: Database.Database, id: string): string
 }
 
 export function deleteComment(id: string): number {
-  const database = getDb();
-  const descendantIds = collectChildCommentIds(database, id);
-  const allIds = [id, ...descendantIds];
-  const placeholders = allIds.map(() => "?").join(",");
-  database.prepare(`DELETE FROM comments WHERE id IN (${placeholders})`).run(...allIds);
-  return allIds.length;
+  return withDb((database) => {
+    const descendantIds = collectChildCommentIds(database, id);
+    const allIds = [id, ...descendantIds];
+    const placeholders = allIds.map(() => "?").join(",");
+    database.prepare(`DELETE FROM comments WHERE id IN (${placeholders})`).run(...allIds);
+    return allIds.length;
+  });
 }
 
 export function getChatMessages(limit = 100): ChatMessage[] {
-  const database = getDb();
-  const rows = database
-    .prepare(
-      "SELECT * FROM chat_messages ORDER BY created_at DESC LIMIT ?"
-    )
-    .all(limit) as ChatMessage[];
-  return rows.reverse();
+  return withDb((database) => {
+    const rows = database
+      .prepare("SELECT * FROM chat_messages ORDER BY created_at DESC LIMIT ?")
+      .all(limit) as ChatMessage[];
+    return rows.reverse();
+  });
 }
 
 export function createChatMessage(
@@ -273,14 +324,15 @@ export function createChatMessage(
   content: string,
   imageUrl: string | null = null
 ): ChatMessage {
-  const database = getDb();
-  const createdAt = Date.now();
-  database
-    .prepare(
-      "INSERT INTO chat_messages (id, nickname, content, image_url, created_at) VALUES (?, ?, ?, ?, ?)"
-    )
-    .run(id, nickname, content, imageUrl, createdAt);
-  return { id, nickname, content, image_url: imageUrl, created_at: createdAt };
+  return withDb((database) => {
+    const createdAt = Date.now();
+    database
+      .prepare(
+        "INSERT INTO chat_messages (id, nickname, content, image_url, created_at) VALUES (?, ?, ?, ?, ?)"
+      )
+      .run(id, nickname, content, imageUrl, createdAt);
+    return { id, nickname, content, image_url: imageUrl, created_at: createdAt };
+  });
 }
 
 export { uploadsDir };

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
-import { createComment, getComment, getComments } from "@/lib/db";
+import { createComment, getComment, getComments, getPost } from "@/lib/db";
 import { isValidMapUrl } from "@/lib/map";
 import { saveUploadedImage } from "@/lib/upload";
 
@@ -20,12 +20,18 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
+    const post = getPost(params.id);
+    if (!post) {
+      return NextResponse.json({ error: "게시글을 찾을 수 없습니다" }, { status: 404 });
+    }
+
     const formData = await request.formData();
     const nickname = (formData.get("nickname") as string)?.trim();
     const content = (formData.get("content") as string)?.trim() || "";
     const image = formData.get("image") as File | null;
     const mapUrl = (formData.get("map_url") as string)?.trim() || null;
-    const parentId = (formData.get("parent_id") as string)?.trim() || null;
+    const parentIdRaw = (formData.get("parent_id") as string)?.trim();
+    const parentId = parentIdRaw || null;
 
     if (!nickname || nickname.length > 20) {
       return NextResponse.json({ error: "닉네임을 확인해주세요" }, { status: 400 });
@@ -77,6 +83,11 @@ export async function POST(
     return NextResponse.json(comment, { status: 201 });
   } catch (err) {
     console.error("Comment create error:", err);
-    return NextResponse.json({ error: "댓글 작성에 실패했습니다" }, { status: 500 });
+    const message = err instanceof Error ? err.message : String(err);
+    const isBusy = message.includes("SQLITE_BUSY") || message.includes("database is locked");
+    return NextResponse.json(
+      { error: isBusy ? "잠시 후 다시 시도해주세요" : "댓글 작성에 실패했습니다" },
+      { status: isBusy ? 503 : 500 }
+    );
   }
 }
