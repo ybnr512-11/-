@@ -112,10 +112,11 @@ export function buildNaverQuery(
   categoryLabel: string,
   keywords: string[]
 ) {
-  const base = `판교 ${categoryLabel}`;
-  const extra = keywords.slice(0, 2).join(" ");
-  const fromContent = content.replace(/\s+/g, " ").slice(0, 30);
-  return `${base} ${extra || fromContent}`.trim().slice(0, 80);
+  const text = content.replace(/\s+/g, " ").trim();
+  if (keywords.length > 0) {
+    return `판교 ${categoryLabel} ${keywords.slice(0, 3).join(" ")}`.trim().slice(0, 80);
+  }
+  return `판교 ${categoryLabel} ${text.slice(0, 40)}`.trim().slice(0, 80);
 }
 
 const PLACE_HINTS = [

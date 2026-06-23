@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { detectCategoryOrDefault } from "@/lib/keywords";
+import {
+  getRecommendButtonEmoji,
+  getRecommendButtonLabel,
+  shouldShowRecommendPanel,
+} from "@/lib/keywords";
 import { getRecommendSourceLabel } from "@/lib/recommend-label";
 
 interface RecommendItem {
@@ -28,7 +32,6 @@ interface RecommendationPanelProps {
 
 export default function RecommendationPanel({ content }: RecommendationPanelProps) {
   const text = content.trim();
-  const detected = detectCategoryOrDefault(text);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -40,7 +43,10 @@ export default function RecommendationPanel({ content }: RecommendationPanelProp
     setOpen(false);
   }, [content]);
 
-  if (!text) return null;
+  if (!text || !shouldShowRecommendPanel(text)) return null;
+
+  const emoji = getRecommendButtonEmoji(text);
+  const buttonLabel = getRecommendButtonLabel(text);
 
   const fetchRecommendations = async () => {
     if (data) {
@@ -69,11 +75,6 @@ export default function RecommendationPanel({ content }: RecommendationPanelProp
     }
   };
 
-  const buttonLabel =
-    detected.id === "general" && detected.keywords.length === 0
-      ? "AI 추천"
-      : `${detected.label} 추천`;
-
   return (
     <div className="recommend-panel">
       <button
@@ -82,7 +83,7 @@ export default function RecommendationPanel({ content }: RecommendationPanelProp
         onClick={fetchRecommendations}
         disabled={loading}
       >
-        {detected.emoji} AI {buttonLabel} {loading ? "분석 중..." : open && data ? "접기" : "보기"}
+        {emoji} AI {buttonLabel} {loading ? "분석 중..." : open && data ? "접기" : "보기"}
       </button>
 
       {error && <p className="error-msg">{error}</p>}
@@ -91,36 +92,41 @@ export default function RecommendationPanel({ content }: RecommendationPanelProp
         <div className="recommend-body">
           <span className="recommend-source-badge">
             📍 {getRecommendSourceLabel(data.source)} 기반
+            {data.category ? ` · ${data.category}` : ""}
           </span>
           <p className="recommend-summary">{data.summary}</p>
-          <ul className="recommend-list">
-            {data.items.map((item, i) => (
-              <li key={`${item.name}-${i}`} className="recommend-item">
-                <div className="recommend-rank">{i + 1}</div>
-                <div className="recommend-info">
-                  <strong>{item.name}</strong>
-                  <span className="recommend-area">{item.area}</span>
-                  <p>{item.reason}</p>
-                  {item.highlights && (
-                    <span className="recommend-highlight">{item.highlights}</span>
-                  )}
-                  {item.rankHint && (
-                    <span className="recommend-rank-hint">📊 {item.rankHint}</span>
-                  )}
-                  <div className="recommend-links">
-                    <a
-                      href={item.googleMapUrl || item.naverMapUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="recommend-link recommend-link-map"
-                    >
-                      Google 지도
-                    </a>
+          {data.items.length > 0 ? (
+            <ul className="recommend-list">
+              {data.items.map((item, i) => (
+                <li key={`${item.name}-${i}`} className="recommend-item">
+                  <div className="recommend-rank">{i + 1}</div>
+                  <div className="recommend-info">
+                    <strong>{item.name}</strong>
+                    <span className="recommend-area">{item.area}</span>
+                    <p>{item.reason}</p>
+                    {item.highlights && (
+                      <span className="recommend-highlight">{item.highlights}</span>
+                    )}
+                    {item.rankHint && (
+                      <span className="recommend-rank-hint">📊 {item.rankHint}</span>
+                    )}
+                    <div className="recommend-links">
+                      <a
+                        href={item.googleMapUrl || item.naverMapUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="recommend-link recommend-link-map"
+                      >
+                        Google 지도
+                      </a>
+                    </div>
                   </div>
-                </div>
-              </li>
-            ))}
-          </ul>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="recommend-disclaimer">추천할 장소가 없습니다.</p>
+          )}
           <p className="recommend-disclaimer">
             {data.source === "naver"
               ? "네이버 지역 검색 API 결과입니다. 위치는 Google 지도 링크로 확인해주세요."

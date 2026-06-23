@@ -211,38 +211,52 @@ export async function chatWithGemini(
 export async function getRecommendations(
   content: string,
   categoryLabel: string,
-  matchedKeywords: string[]
+  matchedKeywords: string[],
+  searchQuery?: string
 ): Promise<RecommendResult> {
-  const naverQuery = buildNaverQuery(content, categoryLabel, matchedKeywords);
-  const naverPlaces = await searchNaverPlaces(naverQuery, 5);
+  const useNaver = matchedKeywords.length > 0 && categoryLabel !== "판교";
+  const naverQuery = searchQuery || buildNaverQuery(content, categoryLabel, matchedKeywords);
 
-  if (naverPlaces && naverPlaces.length > 0) {
-    return buildRecommendFromNaver(naverPlaces, categoryLabel, matchedKeywords);
+  if (useNaver) {
+    const naverPlaces = await searchNaverPlaces(naverQuery, 5);
+    if (naverPlaces && naverPlaces.length > 0) {
+      return buildRecommendFromNaver(naverPlaces, categoryLabel, matchedKeywords);
+    }
   }
 
-  const prompt = `판교 지역 ${categoryLabel} 추천을 Google 검색으로 조사한 뒤 JSON으로 반환하세요.
+  const keywordLine =
+    matchedKeywords.length > 0 ? `감지된 키워드: ${matchedKeywords.join(", ")}` : "감지된 키워드: 없음";
+
+  const prompt = `아래 게시글을 먼저 읽고, 작성자가 실제로 찾는 것이 무엇인지 파악한 뒤 JSON으로 반환하세요.
 ${FACT_RULES}
 
+중요:
+- 게시글 주제와 무관한 맛집·카페·식당을 추천하지 마세요.
+- 게시글이 음식·맛집 이야기가 아니면 식당·카페를 items에 넣지 마세요.
+- 게시글에서 묻는 주제(주차, 병원, 학원, 헬스, 미용, 부동산, 행사 등)에 맞는 판교·분당 장소만 추천하세요.
+- 장소 추천과 관련 없는 잡담·정보 공유 글이면 items는 빈 배열로 두고 summary에 그 이유를 적으세요.
+
 게시글: """${content}"""
-키워드: ${matchedKeywords.join(", ")}
+${keywordLine}
+참고 카테고리(게시글과 맞을 때만 사용): ${categoryLabel}
 
 JSON 스키마:
 {
-  "category": "${categoryLabel}",
+  "category": "게시글 주제에 맞는 한 줄 분류",
   "keywords": ${JSON.stringify(matchedKeywords)},
   "source": "google",
-  "summary": "Google 검색 기반 요약",
+  "summary": "게시글 주제에 맞춘 요약",
   "items": [{
     "name": "업체명",
     "area": "주소",
-    "reason": "Google 검색에서 확인된 근거",
+    "reason": "게시글 주제와 연결된 추천 이유",
     "highlights": "대표 특징",
     "rankHint": "Google 검색 기준",
     "naverSearchQuery": "검색어"
   }]
 }
 
-items 3~5개, Google 검색으로 확인된 곳만, JSON만 출력`;
+items 0~5개, Google 검색으로 확인된 곳만, JSON만 출력`;
 
   return withModelFallback(async (modelName) => {
     const genAI = getClient();
@@ -263,6 +277,9 @@ items 3~5개, Google 검색으로 확인된 곳만, JSON만 출력`;
       ...item,
       naverSearchQuery: item.naverSearchQuery || `판교 ${item.name}`,
     }));
+    if (!parsed.summary && parsed.items.length === 0) {
+      parsed.summary = "이 게시글은 장소 추천과 관련이 없어 보입니다.";
+    }
     return parsed;
   });
 }
