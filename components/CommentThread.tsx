@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Socket } from "socket.io-client";
 import { formatTime } from "@/lib/utils";
 import { resolveImageUrl } from "@/lib/image-url";
@@ -46,6 +46,15 @@ function ReplyForm({
   const [text, setText] = useState(`@${parentNickname} `);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.focus();
+    const end = el.value.length;
+    el.setSelectionRange(end, end);
+  }, []);
 
   const submit = async () => {
     if (!nickname?.trim()) {
@@ -88,12 +97,12 @@ function ReplyForm({
   return (
     <div className="reply-form" style={{ marginLeft: `${Math.min(depth, 6) * 0.75}rem` }}>
       <textarea
+        ref={textareaRef}
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder={`${parentNickname}에게 답글...`}
         maxLength={500}
         rows={2}
-        autoFocus
       />
       <div className="reply-form-actions">
         <span className="char-count">{text.length}/500</span>
