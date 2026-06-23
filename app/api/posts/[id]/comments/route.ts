@@ -75,7 +75,8 @@ export async function POST(
       parentId
     );
     return NextResponse.json(comment, { status: 201 });
-  } catch {
+  } catch (err) {
+    console.error("Comment create error:", err);
     return NextResponse.json({ error: "댓글 작성에 실패했습니다" }, { status: 500 });
   }
 }

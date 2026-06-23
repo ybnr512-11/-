@@ -23,6 +23,8 @@ export function getDb() {
     db.pragma("journal_mode = WAL");
     initSchema(db);
   }
+  // Vercel 서버리스: 배포 후에도 기존 연결이 재사용되면 마이그레이션이 누락될 수 있음
+  runMigrations(db);
   return db;
 }
 
@@ -59,8 +61,7 @@ function initSchema(database: Database.Database) {
       image_url TEXT,
       map_url TEXT,
       created_at INTEGER NOT NULL,
-      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
-      FOREIGN KEY (parent_id) REFERENCES comments(id) ON DELETE CASCADE
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS chat_messages (
@@ -73,8 +74,12 @@ function initSchema(database: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id, created_at ASC);
+    CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_id);
     CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_messages(created_at DESC);
   `);
+}
+
+function runMigrations(database: Database.Database) {
   migrateCommentsTable(database);
   migrateChatTable(database);
 }

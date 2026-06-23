@@ -388,6 +388,11 @@ export default function CommentThread({
   };
 
   const submitComment = async () => {
+    if (!nickname?.trim()) {
+      setError("닉네임을 먼저 설정해주세요");
+      return;
+    }
+
     const text = commentText.trim();
     const map = mapUrl.trim();
 
